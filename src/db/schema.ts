@@ -1,7 +1,8 @@
 // Applied on every boot; every statement must be idempotent.
 export const schema = `
 CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,              -- WhatsApp jid
+  id TEXT PRIMARY KEY,              -- phone jid (91…@s.whatsapp.net) when known, else chat jid
+  chat_jid TEXT,                    -- jid to send to (may be a @lid)
   phone TEXT,
   name TEXT,
   city TEXT,
@@ -23,6 +24,18 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS messages_user ON messages(user_id, id);
 
+CREATE TABLE IF NOT EXISTS memories (
+  id INTEGER PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  content TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'other' CHECK (category IN ('person','preference','fact','event','other')),
+  source TEXT NOT NULL DEFAULT 'explicit' CHECK (source IN ('explicit','inferred')),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  archived_at TEXT
+);
+CREATE INDEX IF NOT EXISTS memories_user ON memories(user_id) WHERE archived_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS inference_log (
   id INTEGER PRIMARY KEY,
   user_id TEXT,
@@ -39,3 +52,6 @@ CREATE TABLE IF NOT EXISTS inference_log (
 );
 CREATE INDEX IF NOT EXISTS inference_log_completion ON inference_log(completion_id);
 `;
+
+/** Columns added after a table first shipped: [table, column, definition]. */
+export const addedColumns: [string, string, string][] = [["users", "chat_jid", "TEXT"]];

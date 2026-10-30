@@ -1,4 +1,5 @@
 import {
+  downloadMediaMessage,
   isJidBroadcast,
   isJidGroup,
   isJidNewsletter,
@@ -16,7 +17,9 @@ export type Inbound = {
   /** Sender's phone number, digits only, when WhatsApp exposes it. */
   phone?: string;
   pushName?: string;
+  /** Message text, or an image's caption ("" if none). */
   text: string;
+  image?: { data: Buffer; mediaType: string };
   waMessageId?: string;
   raw: WAMessage;
 };
@@ -29,7 +32,7 @@ function phoneOf(msg: WAMessage): string | undefined {
 
 function textOf(msg: WAMessage): string | undefined {
   const m = msg.message;
-  return m?.conversation ?? m?.extendedTextMessage?.text ?? undefined;
+  return m?.conversation ?? m?.extendedTextMessage?.text ?? m?.imageMessage?.caption ?? undefined;
 }
 
 function allowed(phone: string | undefined): boolean {
@@ -37,7 +40,7 @@ function allowed(phone: string | undefined): boolean {
   return !!phone && config.ALLOWED_NUMBERS.includes(phone);
 }
 
-/** Calls `handler` for each new 1:1 text message from an allowlisted sender. */
+/** Calls `handler` for each new 1:1 text or image message from an allowlisted sender. */
 export function onInbound(sock: WASocket, handler: (msg: Inbound) => Promise<void>): void {
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
@@ -47,8 +50,9 @@ export function onInbound(sock: WASocket, handler: (msg: Inbound) => Promise<voi
       if (isJidGroup(chatJid) || isJidBroadcast(chatJid) || isJidNewsletter(chatJid) || isJidStatusBroadcast(chatJid))
         continue;
 
-      const text = textOf(raw);
-      if (!text) continue;
+      const imageMessage = raw.message?.imageMessage;
+      const text = textOf(raw) ?? "";
+      if (!text && !imageMessage) continue;
 
       const phone = phoneOf(raw);
       if (!allowed(phone)) {
@@ -57,7 +61,10 @@ export function onInbound(sock: WASocket, handler: (msg: Inbound) => Promise<voi
       }
 
       try {
-        await handler({ chatJid, phone, pushName: raw.pushName ?? undefined, text, waMessageId: raw.key.id ?? undefined, raw });
+        const image = imageMessage
+          ? { data: await downloadMediaMessage(raw, "buffer", {}), mediaType: imageMessage.mimetype ?? "image/jpeg" }
+          : undefined;
+        await handler({ chatJid, phone, pushName: raw.pushName ?? undefined, text, image, waMessageId: raw.key.id ?? undefined, raw });
       } catch (err) {
         log.error({ err, chatJid }, "inbound handler failed");
       }

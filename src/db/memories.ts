@@ -38,3 +38,20 @@ export function remember(
   }
   return { id: Number(insert.run(userId, content, category, source).lastInsertRowid), updated: false };
 }
+
+const archive = db.prepare(
+  "UPDATE memories SET archived_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ? AND archived_at IS NULL",
+);
+const replace = db.prepare(
+  "UPDATE memories SET content = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ? AND archived_at IS NULL",
+);
+
+/** Archives (never deletes) the given memories; returns how many were active. */
+export function forget(userId: string, ids: number[]): number {
+  return db.transaction(() => ids.reduce((n, id) => n + archive.run(id, userId).changes, 0))();
+}
+
+/** Rewrites one memory in place; false if it isn't an active memory of this user. */
+export function rewrite(userId: string, id: number, content: string): boolean {
+  return replace.run(content, id, userId).changes > 0;
+}

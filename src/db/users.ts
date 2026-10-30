@@ -24,3 +24,20 @@ export function upsertUser(chatJid: string, phone: string | undefined, pushName:
   else if (existing.chat_jid !== chatJid) touchChat.run(chatJid, id);
   return get.get(id)!;
 }
+
+export type Profile = Partial<Pick<User, "name" | "city" | "language" | "timezone">>;
+
+export function updateProfile(id: string, profile: Profile): User {
+  const fields = (["name", "city", "language", "timezone"] as const).flatMap((k) => (profile[k] ? [[k, profile[k]]] : []));
+  if (fields.length)
+    db.prepare(`UPDATE users SET ${fields.map(([k]) => `${k} = ?`).join(", ")} WHERE id = ?`).run(
+      ...fields.map(([, v]) => v),
+      id,
+    );
+  return get.get(id)!;
+}
+
+/** Set after the welcome turn, so the onboarding instructions only apply once. */
+export function markOnboarded(id: string): void {
+  db.prepare("UPDATE users SET onboarded_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND onboarded_at IS NULL").run(id);
+}

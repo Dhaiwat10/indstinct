@@ -36,6 +36,32 @@ CREATE TABLE IF NOT EXISTS memories (
 );
 CREATE INDEX IF NOT EXISTS memories_user ON memories(user_id) WHERE archived_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS todos (
+  id INTEGER PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  title TEXT NOT NULL,
+  notes TEXT,
+  due_at TEXT,                      -- UTC ISO
+  done_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS todos_open ON todos(user_id) WHERE done_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS schedules (
+  id INTEGER PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL CHECK (kind IN ('reminder','cron')),
+  cron_expr TEXT,
+  payload_kind TEXT NOT NULL CHECK (payload_kind IN ('text','agent')),
+  payload TEXT NOT NULL,            -- reminder text, or the prompt a cron run executes
+  description TEXT NOT NULL,
+  last_run_at TEXT,
+  next_run_at TEXT NOT NULL,        -- UTC ISO
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS schedules_due ON schedules(next_run_at) WHERE active = 1;
+
 CREATE TABLE IF NOT EXISTS inference_log (
   id INTEGER PRIMARY KEY,
   user_id TEXT,

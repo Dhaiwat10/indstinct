@@ -16,6 +16,10 @@ const get = db.prepare<[string], User>("SELECT * FROM users WHERE id = ?");
 const insert = db.prepare("INSERT INTO users (id, chat_jid, phone, name) VALUES (?, ?, ?, ?)");
 const touchChat = db.prepare("UPDATE users SET chat_jid = ? WHERE id = ?");
 
+export function getUser(id: string): User | undefined {
+  return get.get(id);
+}
+
 /** Users are keyed by phone jid when WhatsApp gives us the number, so @lid churn doesn't split them. */
 export function upsertUser(chatJid: string, phone: string | undefined, pushName: string | undefined): User {
   const id = phone ? `${phone}@s.whatsapp.net` : chatJid;

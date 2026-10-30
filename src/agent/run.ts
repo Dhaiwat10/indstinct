@@ -9,9 +9,17 @@ import { extractMemories } from "./memory-extract.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { forget } from "./tools/forget.js";
 import { remember } from "./tools/remember.js";
+import { cancelSchedule, listSchedules, scheduleRecurring, setReminder } from "./tools/schedule.js";
+import { addTodo, completeTodo, listTodos } from "./tools/todos.js";
 import { updateProfile } from "./tools/update-profile.js";
 
-export type Turn = { text: string; images: { data: Buffer; mediaType: string }[]; waMessageId?: string };
+export type Turn = {
+  text: string;
+  images: { data: Buffer; mediaType: string }[];
+  waMessageId?: string;
+  /** Set when a recurring task fires: `text` is its prompt, and nobody is waiting on a chat reply. */
+  scheduled?: { id: number; description: string };
+};
 
 const linkInferences = db.prepare(
   "UPDATE inference_log SET message_id = ? WHERE user_id = ? AND message_id IS NULL AND purpose = 'agent'",
@@ -27,6 +35,7 @@ function clean(text: string): string {
  * describes it carries the details into later turns.
  */
 function stored(turn: Turn): string {
+  if (turn.scheduled) return `[scheduled task #${turn.scheduled.id}: ${turn.scheduled.description}] ${turn.text}`;
   const tag = turn.images.length ? `[sent ${turn.images.length > 1 ? `${turn.images.length} photos` : "a photo"}]` : "";
   return [tag, turn.text].filter(Boolean).join(" ");
 }
@@ -40,14 +49,33 @@ export async function runAgent(user: User, turn: Turn): Promise<string> {
   messages.push({ role: "user", content });
   saveMessage(user.id, "user", stored(turn), turn.waMessageId);
 
+  const tools = {
+    remember: remember(user),
+    forget: forget(user),
+    update_profile: updateProfile(user),
+    add_todo: addTodo(user),
+    complete_todo: completeTodo(user),
+    list_todos: listTodos(user),
+    // A scheduled run can't schedule more runs.
+    ...(!turn.scheduled && {
+      set_reminder: setReminder(user),
+      schedule_recurring: scheduleRecurring(user),
+      list_schedules: listSchedules(user),
+      cancel_schedule: cancelSchedule(user),
+    }),
+  };
+  const system = turn.scheduled
+    ? `${buildSystemPrompt(user)}\n\nThis is scheduled task #${turn.scheduled.id} that the user set up: "${turn.scheduled.description}". Do it now; your reply is sent to them as-is, so write it as the message itself, with no preamble. You have no web access yet: never invent news, scores, prices or other live facts. If the task needs them, say briefly that live updates are coming soon.`
+    : buildSystemPrompt(user);
+
   const t0 = Date.now();
   const result = await inferenceContext.run({ userId: user.id }, () =>
     generateText({
       // The primary model has no vision; image turns go to the vision model, tools and all.
-      model: turn.images.length ? models.vision() : models.primary(),
-      system: buildSystemPrompt(user),
+      model: turn.images.length ? models.vision() : turn.scheduled ? models.heavy() : models.primary(),
+      system,
       messages,
-      tools: { remember: remember(user), forget: forget(user), update_profile: updateProfile(user) },
+      tools,
       stopWhen: stepCountIs(8),
     }),
   );
@@ -64,7 +92,7 @@ export async function runAgent(user: User, turn: Turn): Promise<string> {
   );
 
   // Short messages ("ok", "thanks") never carry new facts; skip the extra call.
-  if (stored(turn).length >= 15)
+  if (!turn.scheduled && stored(turn).length >= 15)
     void extractMemories(user, stored(turn), reply, replyId).catch((err) => log.warn({ err, user: user.id }, "memory extraction failed"));
   return reply;
 }

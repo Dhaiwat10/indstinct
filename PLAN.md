@@ -24,7 +24,8 @@ All in the Confidential-TEE tier (`owned_by: nearai`):
 
 | Role | Model | Notes |
 |---|---|---|
-| Primary chat + tools | `Qwen/Qwen3.8-27B` | tools ✅ vision ✅ 262k ctx. **Benchmark vs `z-ai/glm-5.3-flash` on Day 1** (tools ✅ vision ✅ 1M ctx) and pick the better tool-caller. |
+| Primary chat + tools | `deepseek-ai/DeepSeek-V4.1-Flash-1017` | tools ✅ 1M ctx, no vision. **Chosen by the Day-1 benchmark** (`pnpm bench:tools`, 2026-10-31): 24/24 tool checks, p50 4.0s / p90 6.5s — vs Qwen3.8-27B 23/24, 4.8s / 10.7s; GLM-5.3-flash 23/24, 6.5s / 14.5s; Qwen3.6-35B 23/24, 6.1s / 17.9s. |
+| Image turns | `Qwen/Qwen3.8-27B` | tools ✅ vision ✅ 262k ctx (`MODEL_VISION`) |
 | Heavy tasks (cron research, browsing) | `deepseek-ai/DeepSeek-V4.1-Flash-1017` | tools ✅ 1M ctx, no vision |
 | Memory extraction (cheap, structured) | `Qwen/Qwen3.6-35B-A3B-FP8` | tools ✅ structured_outputs ✅ |
 | Voice notes | `openai/whisper-large-v3` | Check `/v1/audio/transcriptions` works (OpenAI-compatible suggests yes). |
@@ -339,7 +340,8 @@ Judges' number allowlist, bug fixes, nothing new.
 ```
 NEAR_AI_API_KEY=
 NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1
-MODEL_PRIMARY=Qwen/Qwen3.8-27B
+MODEL_PRIMARY=deepseek-ai/DeepSeek-V4.1-Flash-1017
+MODEL_VISION=Qwen/Qwen3.8-27B
 MODEL_HEAVY=deepseek-ai/DeepSeek-V4.1-Flash-1017
 MODEL_EXTRACT=Qwen/Qwen3.6-35B-A3B-FP8
 MODEL_WHISPER=openai/whisper-large-v3

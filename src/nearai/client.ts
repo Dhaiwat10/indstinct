@@ -11,6 +11,7 @@ export const nearai = createOpenAICompatible({
 
 export const models = {
   primary: () => nearai.chatModel(config.MODEL_PRIMARY),
+  vision: () => nearai.chatModel(config.MODEL_VISION),
   heavy: () => nearai.chatModel(config.MODEL_HEAVY),
   extract: () => nearai.chatModel(config.MODEL_EXTRACT),
 };

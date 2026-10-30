@@ -12,7 +12,9 @@ const list = z
 const schema = z.object({
   NEAR_AI_API_KEY: z.string().min(1, "NEAR_AI_API_KEY is required"),
   NEAR_AI_BASE_URL: z.string().url().default("https://cloud-api.near.ai/v1"),
-  MODEL_PRIMARY: z.string().default("Qwen/Qwen3.8-27B"),
+  MODEL_PRIMARY: z.string().default("deepseek-ai/DeepSeek-V4.1-Flash-1017"),
+  // DeepSeek has no vision; image turns go here.
+  MODEL_VISION: z.string().default("Qwen/Qwen3.8-27B"),
   MODEL_HEAVY: z.string().default("deepseek-ai/DeepSeek-V4.1-Flash-1017"),
   MODEL_EXTRACT: z.string().default("Qwen/Qwen3.6-35B-A3B-FP8"),
   MODEL_WHISPER: z.string().default("openai/whisper-large-v3"),

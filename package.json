@@ -11,7 +11,8 @@
     "start": "node dist/index.js",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "smoke:nearai": "tsx scripts/smoke-nearai.ts"
+    "smoke:nearai": "tsx scripts/smoke-nearai.ts",
+    "bench:tools": "tsx scripts/bench-tools.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "3.0.82",

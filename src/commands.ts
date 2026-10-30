@@ -1,5 +1,5 @@
 import { db } from "./db/index.js";
-import { listMemories } from "./db/memories.js";
+import { forget, listMemories } from "./db/memories.js";
 import { clearHistory } from "./db/messages.js";
 import type { User } from "./db/users.js";
 import { verifyInference, type InferenceRow } from "./nearai/verify.js";
@@ -14,7 +14,7 @@ const tick = (ok: boolean) => (ok ? "✅" : "❌");
 /** The final model call behind the user's latest bot reply (or the nth-latest with `/verify n`). */
 const lastInference = db.prepare<[string, number], InferenceRow>(`
   SELECT l.* FROM inference_log l
-  WHERE l.message_id = (
+  WHERE l.purpose = 'agent' AND l.message_id = (
     SELECT id FROM messages WHERE user_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1 OFFSET ?
   )
   ORDER BY l.id DESC LIMIT 1
@@ -58,6 +58,7 @@ function memories(user: User): string {
 const help = `*Commands*
 /verify — prove my last reply ran in a TEE
 /memories — what I remember about you
+/forget <id> — forget a memory (ids from /memories)
 /reset — clear our chat history (memories stay)
 /help — this list`;
 
@@ -71,6 +72,12 @@ export async function handleCommand(user: User, text: string): Promise<string | 
       return verify(user, arg!);
     case "memories":
       return memories(user);
+    case "forget": {
+      const ids = (arg!.match(/\d+/g) ?? []).map(Number);
+      if (ids.length === 0) return "Which one? Send /forget followed by the number from /memories, like /forget 12";
+      const n = forget(user.id, ids);
+      return n ? `🗑️ Forgotten (${n}).` : "I couldn't find that memory. /memories shows the numbers.";
+    }
     case "reset":
       clearHistory(user.id);
       return "Chat history cleared. I still remember what you've told me — /memories to see it.";

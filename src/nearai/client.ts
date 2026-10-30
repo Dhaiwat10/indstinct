@@ -7,6 +7,8 @@ export const nearai = createOpenAICompatible({
   baseURL: config.NEAR_AI_BASE_URL,
   apiKey: config.NEAR_AI_API_KEY,
   fetch: capturingFetch,
+  // Send json_schema response formats for Output.object; every TEE model we use supports them.
+  supportsStructuredOutputs: true,
 });
 
 export const models = {

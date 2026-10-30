@@ -4,14 +4,14 @@ import { db } from "../db/index.js";
 import { log } from "../log.js";
 
 /** Who an inference call is for; set with `inferenceContext.run(...)` around agent turns. */
-export const inferenceContext = new AsyncLocalStorage<{ userId?: string; messageId?: number }>();
+export const inferenceContext = new AsyncLocalStorage<{ userId?: string; messageId?: number; purpose?: "agent" | "extract" }>();
 
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
 const insert = db.prepare(`
   INSERT INTO inference_log
-    (user_id, message_id, completion_id, model, request_sha256, response_sha256, request_raw, response_raw)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    (user_id, message_id, purpose, completion_id, model, request_sha256, response_sha256, request_raw, response_raw)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 function toBytes(body: unknown): Uint8Array<ArrayBuffer> | undefined {
@@ -47,6 +47,7 @@ export const capturingFetch: typeof fetch = async (input, init) => {
       insert.run(
         ctx?.userId ?? null,
         ctx?.messageId ?? null,
+        ctx?.purpose ?? "agent",
         resJson.id ?? null,
         reqJson.model ?? null,
         sha256(requestBytes),

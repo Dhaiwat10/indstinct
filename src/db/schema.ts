@@ -54,4 +54,8 @@ CREATE INDEX IF NOT EXISTS inference_log_completion ON inference_log(completion_
 `;
 
 /** Columns added after a table first shipped: [table, column, definition]. */
-export const addedColumns: [string, string, string][] = [["users", "chat_jid", "TEXT"]];
+export const addedColumns: [string, string, string][] = [
+  ["users", "chat_jid", "TEXT"],
+  // 'agent' for calls that write the reply, 'extract' for background memory extraction.
+  ["inference_log", "purpose", "TEXT NOT NULL DEFAULT 'agent'"],
+];

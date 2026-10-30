@@ -4,6 +4,7 @@ import { runAgent } from "./agent/run.js";
 import { handleCommand } from "./commands.js";
 import { upsertUser } from "./db/users.js";
 import { log } from "./log.js";
+import { startScheduler } from "./scheduler/tick.js";
 import { onInbound, type Inbound } from "./wa/inbound.js";
 import { sendText, typing } from "./wa/outbound.js";
 import { connect } from "./wa/socket.js";
@@ -50,7 +51,21 @@ function flush(sock: WASocket, chatJid: string): void {
   void serial(chatJid, () => respond(sock, p.burst));
 }
 
+// The scheduler outlives reconnects: it sends through the open socket and pauses while there is none.
+let current: WASocket | undefined;
+startScheduler(
+  async (jid, text) => {
+    if (!current) throw new Error("WhatsApp not connected");
+    await sendText(current, jid, text);
+  },
+  () => !!current,
+);
+
 await connect((sock) => {
+  sock.ev.on("connection.update", ({ connection }) => {
+    if (connection === "open") current = sock;
+    if (connection === "close" && current === sock) current = undefined;
+  });
   onInbound(sock, async (msg) => {
     // Commands run on their own, right away, after whatever was already typed.
     if (!msg.image && msg.text.trim().startsWith("/")) {

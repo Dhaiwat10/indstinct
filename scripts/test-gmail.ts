@@ -143,6 +143,16 @@ await test("displayName", () => {
   assert.equal(displayName("riya@x.com"), "riya@x.com");
 });
 
+console.log("public pages");
+await test("home, privacy and terms pages are served (Google needs them to publish the OAuth app)", async () => {
+  for (const [path, needle] of [["/", "connect Gmail"], ["/privacy", "Limited Use requirements"], ["/terms", "Terms of service"]] as const) {
+    const res = await http(path);
+    assert.equal(res.status, 200, path);
+    assert.match(res.headers.get("content-type") ?? "", /text\/html/);
+    assert.ok((await res.text()).includes(needle), `${path} missing "${needle}"`);
+  }
+});
+
 console.log("connect flow");
 let link = "";
 await test("/gmail hands out a connect link and the prompt says not connected", async () => {

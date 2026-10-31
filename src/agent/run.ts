@@ -7,11 +7,13 @@ import { models } from "../nearai/client.js";
 import { inferenceContext } from "../nearai/capture.js";
 import { extractMemories } from "./memory-extract.js";
 import { buildSystemPrompt } from "./prompt.js";
+import { browse } from "./tools/browse.js";
 import { forget } from "./tools/forget.js";
 import { remember } from "./tools/remember.js";
 import { cancelSchedule, listSchedules, scheduleRecurring, setReminder } from "./tools/schedule.js";
 import { addTodo, completeTodo, listTodos } from "./tools/todos.js";
 import { updateProfile } from "./tools/update-profile.js";
+import { webSearch } from "./tools/web-search.js";
 
 export type Turn = {
   text: string;
@@ -56,6 +58,8 @@ export async function runAgent(user: User, turn: Turn): Promise<string> {
     add_todo: addTodo(user),
     complete_todo: completeTodo(user),
     list_todos: listTodos(user),
+    web_search: webSearch,
+    browse: browse(),
     // A scheduled run can't schedule more runs.
     ...(!turn.scheduled && {
       set_reminder: setReminder(user),
@@ -65,7 +69,7 @@ export async function runAgent(user: User, turn: Turn): Promise<string> {
     }),
   };
   const system = turn.scheduled
-    ? `${buildSystemPrompt(user)}\n\nThis is scheduled task #${turn.scheduled.id} that the user set up: "${turn.scheduled.description}". Do it now; your reply is sent to them as-is, so write it as the message itself, with no preamble. You have no web access yet: never invent news, scores, prices or other live facts. If the task needs them, say briefly that live updates are coming soon.`
+    ? `${buildSystemPrompt(user)}\n\nThis is scheduled task #${turn.scheduled.id} that the user set up: "${turn.scheduled.description}". Do it now; your reply is sent to them as-is, so write it as the message itself, with no preamble. For news, scores, prices or anything live, use web_search first; never invent them.`
     : buildSystemPrompt(user);
 
   const t0 = Date.now();

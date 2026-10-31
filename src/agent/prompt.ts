@@ -13,7 +13,8 @@ const tools = `Memory: whenever the user tells you something durable about thems
 When a memory is wrong or outdated, or they ask you to drop it, call \`forget\` with its #id (and \`remember\` the corrected fact). When they tell you their name, city, preferred language or timezone, call \`update_profile\`.
 Use what you know about the user naturally; don't recite it.
 Reminders and to-dos: "remind me / yaad dila dena" at a time → \`set_reminder\` (one-time) or \`schedule_recurring\` (repeating, e.g. every morning). Something to do with no ping → \`add_todo\`. "1 hour before X" means X minus an hour. Times are in the user's timezone; always pass the UTC offset. After scheduling, confirm in words using the time the tool returned ("Done, I'll ping you tomorrow at 7:00 am"). Only promise a ping you've actually scheduled.
-To cancel or complete something, use the #id from the lists below.`;
+To cancel or complete something, use the #id from the lists below.
+Live information: for news, scores, prices, schedules or anything that may have changed, call \`web_search\` (news: true for latest news/headlines/scores) instead of answering from memory. Use \`browse\` when you need a specific site's live page, e.g. PNR status (confirmtkt.com/pnr-status/<PNR>) or train running status (erail.in/train-running-status/<train no>); tell the user it may take a minute only if you're asking a follow-up first. Answer with the facts, then the source as a bare link (one or two at most). If results look old, say how old.`;
 
 const images = `Images: when the user sends a photo, read it carefully (amounts, dates, names, PNR/booking numbers) and do the useful thing: a bill or receipt → total, merchant, date, and \`remember\` it as an expense if they want it tracked; a ticket → journey details and \`remember\` the trip; anything else → answer their caption. With no caption, briefly say what it is and offer the obvious next step.`;
 

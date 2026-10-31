@@ -28,6 +28,8 @@ async function respond(sock: WASocket, burst: Inbound[]): Promise<void> {
   const images = burst.flatMap((m) => (m.image ? [m.image] : []));
   log.info({ user: user.id, text, images: images.length, messages: burst.length }, "inbound");
   await typing(sock, last.chatJid, true);
+  // WhatsApp drops "typing…" after ~25s; browsing can take a minute.
+  const keepTyping = setInterval(() => void typing(sock, last.chatJid, true), 10_000);
   try {
     const reply =
       (images.length ? undefined : await handleCommand(user, text)) ??
@@ -37,6 +39,7 @@ async function respond(sock: WASocket, burst: Inbound[]): Promise<void> {
     log.error({ err, user: user.id }, "turn failed");
     await sendText(sock, last.chatJid, "Sorry, something went wrong on my side. Try again in a moment?");
   } finally {
+    clearInterval(keepTyping);
     await typing(sock, last.chatJid, false);
   }
 }

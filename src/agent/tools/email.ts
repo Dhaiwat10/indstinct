@@ -6,6 +6,7 @@ import { type FullMessage, type Gmail, GmailReauthRequired, type MessageMeta } f
 import { addressOf, displayName } from "../../gmail/mime.js";
 import { log } from "../../log.js";
 import { formatWhen } from "../../scheduler/time.js";
+import { noDashes } from "../../text.js";
 
 /** A file a tool wants delivered to the user on WhatsApp after the reply. */
 export type OutFile = { name: string; mimeType: string; data: Buffer };
@@ -101,7 +102,8 @@ export function emailTools(user: User, gmail: Gmail, ctx: EmailToolContext): Too
       reply_all: z.boolean().optional(),
       update_draft: z.number().int().optional().describe("#number of an existing draft to rewrite"),
     }),
-    execute: ({ body, to, subject, cc, reply_to_id, reply_all, update_draft }) => safe(async () => {
+    execute: ({ body: raw, to, subject, cc, reply_to_id, reply_all, update_draft }) => safe(async () => {
+      const body = noDashes(raw);
       let threadId: string | undefined;
       let inReplyTo: string | undefined;
       let references: string | undefined;

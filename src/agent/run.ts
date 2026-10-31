@@ -7,6 +7,7 @@ import { models } from "../nearai/client.js";
 import { inferenceContext } from "../nearai/capture.js";
 import { extractMemories } from "./memory-extract.js";
 import { buildSystemPrompt } from "./prompt.js";
+import { noDashes } from "../text.js";
 import { browse } from "./tools/browse.js";
 import { emailTools, type OutFile } from "./tools/email.js";
 import { forget } from "./tools/forget.js";
@@ -100,9 +101,9 @@ function timed<T extends ToolSet>(tools: T, userId: string): T {
   ) as T;
 }
 
-/** Some reasoning models leak think blocks or leading blank lines into content. */
+/** Some reasoning models leak think blocks or leading blank lines into content; em dashes are banned outright. */
 function clean(text: string): string {
-  return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  return noDashes(text.replace(/<think>[\s\S]*?<\/think>/g, "")).trim();
 }
 
 /**

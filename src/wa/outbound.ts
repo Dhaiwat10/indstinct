@@ -1,4 +1,5 @@
 import type { WASocket } from "baileys";
+import { noDashes } from "../text.js";
 
 const MAX_CHUNK = 4000;
 
@@ -18,7 +19,7 @@ function split(text: string): string[] {
 }
 
 export async function sendText(sock: WASocket, jid: string, text: string): Promise<void> {
-  for (const chunk of split(text)) await sock.sendMessage(jid, { text: chunk });
+  for (const chunk of split(noDashes(text))) await sock.sendMessage(jid, { text: chunk });
 }
 
 /** Delivers a file (e.g. an email attachment) as a WhatsApp document. */

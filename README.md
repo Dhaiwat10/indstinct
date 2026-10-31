@@ -15,7 +15,9 @@ docker compose up -d --build
 docker compose logs -f bot          # shows the 8-char WhatsApp pairing code; enter it on the SIM's phone under Linked devices
 ```
 
-The `data` volume holds the SQLite database and the WhatsApp session, so `docker compose up -d --build` after a `git pull` keeps everything. Back it up with `docker run --rm -v indstinct_data:/data -v "$PWD":/out alpine tar czf /out/indstinct-data.tgz -C / data`. Pair the server fresh rather than copying a laptop's `data/auth` across while the laptop bot is still running; two live sessions on one number fight each other. `curl https://bot.example.com/health` should say `ok`. No domain? `bot.<server-ip>.sslip.io` resolves without any DNS setup and Caddy will get a certificate for it.
+The `data` volume holds the SQLite database and the WhatsApp session, so `docker compose up -d --build` after a `git pull` keeps everything. Back it up with `docker run --rm -v indstinct_data:/data -v "$PWD":/out alpine tar czf /out/indstinct-data.tgz -C / data`. Pair the server fresh rather than copying a laptop's `data/auth` across while the laptop bot is still running; two live sessions on one number fight each other. `curl https://bot.example.com/health` should say `ok`.
+
+**Continuous deploy.** `.github/workflows/deploy.yml` runs typecheck and `pnpm test:gmail` on every PR, and on every push to `main` it SSHes into the droplet and runs `/usr/local/bin/indstinct-deploy` (fetch main, `docker compose up -d --build`, wait for `/health`). That script lives on the server, and the CI key in the `DROPLET_SSH_KEY` repo secret is pinned to it with a `command=` entry in `authorized_keys`, so the key can't open a shell. To re-run a deploy by hand: Actions → CI and deploy → Run workflow. No domain? `bot.<server-ip>.sslip.io` resolves without any DNS setup and Caddy will get a certificate for it.
 
 ## Gmail (optional)
 

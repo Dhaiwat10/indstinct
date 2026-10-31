@@ -15,15 +15,17 @@ COPY src ./src
 RUN pnpm build && pnpm prune --prod
 
 FROM base
+# Chromium first, before any app files, so this slow layer stays cached across code changes.
+# Must equal the playwright version in package.json; the check below fails the build otherwise.
+ARG PLAYWRIGHT_VERSION=1.64.1
+RUN npx -y playwright@${PLAYWRIGHT_VERSION} install --with-deps --only-shell chromium \
+ && rm -rf /var/lib/apt/lists/* /root/.cache /root/.npm
 ENV NODE_ENV=production DATA_DIR=/data PORT=3000
 # --chown at copy time; a later chown -R would duplicate node_modules into another layer.
 COPY --from=build --chown=node:node /app/package.json ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
-# The playwright CLI from node_modules installs the browser build matching the pinned version,
-# plus the system libraries it needs.
-RUN node node_modules/playwright/cli.js install --with-deps --only-shell chromium \
- && rm -rf /var/lib/apt/lists/* /root/.cache \
+RUN node -e "const v=require('playwright/package.json').version; if(v!=='${PLAYWRIGHT_VERSION}'){console.error('playwright is '+v+' but the Dockerfile installs Chromium for ${PLAYWRIGHT_VERSION}; update PLAYWRIGHT_VERSION');process.exit(1)}" \
  && mkdir -p /data && chown node:node /data /app
 # Not root: Chromium refuses to sandbox as root, and the SQLite/auth files shouldn't be root-owned.
 USER node

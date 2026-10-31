@@ -1,0 +1,48 @@
+name: CI and deploy
+
+# Every PR and push gets checked. Pushes to main (i.e. merges) also deploy to the droplet.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test:gmail
+
+  deploy:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Merges that land close together deploy one after another, never at once.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Deploy to the droplet
+        env:
+          DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+        run: |
+          if [ -z "$DROPLET_SSH_KEY" ]; then echo "::error::DROPLET_SSH_KEY secret is not set"; exit 1; fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DROPLET_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          # Pinned host key: the job refuses to talk to anything that isn't our droplet.
+          echo "64.227.154.196 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDw/ggfb1Qde2OMm+BMEqMt9KpnoTexLNbvi93wjYLem" > ~/.ssh/known_hosts
+          # The key is a forced command on the server: it can only run /usr/local/bin/indstinct-deploy
+          # (fetch main, rebuild, restart, wait for /health), whatever we send here.
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 root@64.227.154.196

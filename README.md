@@ -17,7 +17,13 @@ docker compose logs -f bot          # shows the 8-char WhatsApp pairing code; en
 
 The `data` volume holds the SQLite database and the WhatsApp session, so `docker compose up -d --build` after a `git pull` keeps everything. Back it up with `docker run --rm -v indstinct_data:/data -v "$PWD":/out alpine tar czf /out/indstinct-data.tgz -C / data`. Pair the server fresh rather than copying a laptop's `data/auth` across while the laptop bot is still running; two live sessions on one number fight each other. `curl https://bot.example.com/health` should say `ok`.
 
-**Continuous deploy.** `.github/workflows/deploy.yml` runs typecheck and `pnpm test:gmail` on every PR, and on every push to `main` it SSHes into the droplet and runs `/usr/local/bin/indstinct-deploy` (fetch main, `docker compose up -d --build`, wait for `/health`). That script lives on the server, and the CI key in the `DROPLET_SSH_KEY` repo secret is pinned to it with a `command=` entry in `authorized_keys`, so the key can't open a shell. To re-run a deploy by hand: Actions → CI and deploy → Run workflow. No domain? `bot.<server-ip>.sslip.io` resolves without any DNS setup and Caddy will get a certificate for it.
+**CI and continuous deploy** (`.github/workflows/deploy.yml`):
+
+- **check** (every PR and push): typecheck plus `pnpm test`, which runs the offline tests: reminders, recurring tasks, to-dos, memory and commands (`scripts/test-core.ts`), and Gmail (`scripts/test-gmail.ts`). The model is stubbed, so these are fast and deterministic. A red check blocks the deploy.
+- **eval** (PRs only): the live chat eval (`pnpm eval:chat`) against NEAR AI, posted as a PR comment. Model replies vary, so this is a warning to read before merging, not a blocker.
+- **deploy** (push to `main`, after check): SSHes into the droplet with the `DROPLET_SSH_KEY` secret and runs `/usr/local/bin/indstinct-deploy`. The key is pinned to that script with a `command=` entry in `authorized_keys`, so it can't open a shell. The script fetches main, builds, restarts, and requires `/health` to stay up for 20 seconds with no container restart. If the build fails or the new version doesn't stay up, it rolls back to the previous commit and the CI run goes red.
+
+The server script's source is `deploy/indstinct-deploy`. After changing it, copy it to the droplet with `scp deploy/indstinct-deploy root@<ip>:/usr/local/bin/`. Repo secrets needed: `DROPLET_SSH_KEY`, `NEAR_AI_API_KEY`, `TAVILY_API_KEY`.
 
 ## Gmail (optional)
 

@@ -40,6 +40,19 @@ async function fire(s: Schedule, send: Send): Promise<void> {
   await send(jid, reply);
 }
 
+/** One pass over everything due now. Exported so tests can drive it without the 30s timer. */
+export async function runDue(send: Send): Promise<void> {
+  for (const s of dueSchedules()) {
+    if (!proactiveGate(s.user_id)) continue;
+    try {
+      await fire(s, send);
+      log.info({ schedule: s.id, kind: s.kind, user: s.user_id }, "schedule fired");
+    } catch (err) {
+      log.error({ err, schedule: s.id }, "schedule failed");
+    }
+  }
+}
+
 /** Runs due reminders and recurring tasks every 30 seconds. */
 export function startScheduler(send: Send, connected: () => boolean): void {
   let running = false;
@@ -47,15 +60,7 @@ export function startScheduler(send: Send, connected: () => boolean): void {
     if (running || !connected()) return;
     running = true;
     try {
-      for (const s of dueSchedules()) {
-        if (!proactiveGate(s.user_id)) continue;
-        try {
-          await fire(s, send);
-          log.info({ schedule: s.id, kind: s.kind, user: s.user_id }, "schedule fired");
-        } catch (err) {
-          log.error({ err, schedule: s.id }, "schedule failed");
-        }
-      }
+      await runDue(send);
     } finally {
       running = false;
     }

@@ -8,12 +8,14 @@ import { inferenceContext } from "../nearai/capture.js";
 import { extractMemories } from "./memory-extract.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { browse } from "./tools/browse.js";
+import { emailTools, type OutFile } from "./tools/email.js";
 import { forget } from "./tools/forget.js";
 import { remember } from "./tools/remember.js";
 import { cancelSchedule, listSchedules, scheduleRecurring, setReminder } from "./tools/schedule.js";
 import { addTodo, completeTodo, listTodos } from "./tools/todos.js";
 import { updateProfile } from "./tools/update-profile.js";
 import { webSearch } from "./tools/web-search.js";
+import { gmailFor } from "../gmail/client.js";
 
 export type Turn = {
   text: string;
@@ -27,7 +29,7 @@ const linkInferences = db.prepare(
   "UPDATE inference_log SET message_id = ? WHERE user_id = ? AND message_id IS NULL AND purpose = 'agent'",
 );
 
-export type AgentResult = { reply: string; tools: ToolTrace[] };
+export type AgentResult = { reply: string; tools: ToolTrace[]; files: OutFile[] };
 
 /** Tool results replayed into later turns are cut to this, and only for the latest few turns. */
 const TRACE_CHARS = 1500;
@@ -92,7 +94,11 @@ export async function runAgent(user: User, turn: Turn): Promise<AgentResult> {
   messages.push({ role: "user", content });
   saveMessage(user.id, "user", stored(turn), turn.waMessageId);
 
+  const turnStartedAt = Date.now();
+  const files: OutFile[] = [];
+  const gmail = gmailFor(user.id);
   const toolset = {
+    ...(gmail && emailTools(user, gmail, { turnStartedAt, files, scheduled: !!turn.scheduled })),
     remember: remember(user),
     forget: forget(user),
     update_profile: updateProfile(user),
@@ -141,5 +147,5 @@ export async function runAgent(user: User, turn: Turn): Promise<AgentResult> {
   // Short messages ("ok", "thanks") never carry new facts; skip the extra call.
   if (!turn.scheduled && stored(turn).length >= 15)
     void extractMemories(user, stored(turn), reply, replyId).catch((err) => log.warn({ err, user: user.id }, "memory extraction failed"));
-  return { reply, tools };
+  return { reply, tools, files };
 }

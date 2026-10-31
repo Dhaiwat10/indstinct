@@ -1,0 +1,4 @@
+# Automatic HTTPS for the OAuth callback. Only the bot's tiny HTTP surface sits behind this.
+{$DOMAIN} {
+	reverse_proxy bot:3000
+}

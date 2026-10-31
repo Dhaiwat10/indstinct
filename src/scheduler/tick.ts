@@ -13,6 +13,13 @@ export type Send = (jid: string, text: string) => Promise<void>;
 
 const lastProactive = new Map<string, number>();
 
+/** True (and records a send) when the user hasn't had an unsolicited message in the last minute. */
+export function proactiveGate(userId: string): boolean {
+  if (Date.now() - (lastProactive.get(userId) ?? 0) < PROACTIVE_GAP_MS) return false;
+  lastProactive.set(userId, Date.now());
+  return true;
+}
+
 async function fire(s: Schedule, send: Send): Promise<void> {
   const user = getUser(s.user_id);
   if (!user) return markRan(s, undefined);
@@ -41,8 +48,7 @@ export function startScheduler(send: Send, connected: () => boolean): void {
     running = true;
     try {
       for (const s of dueSchedules()) {
-        if (Date.now() - (lastProactive.get(s.user_id) ?? 0) < PROACTIVE_GAP_MS) continue;
-        lastProactive.set(s.user_id, Date.now());
+        if (!proactiveGate(s.user_id)) continue;
         try {
           await fire(s, send);
           log.info({ schedule: s.id, kind: s.kind, user: s.user_id }, "schedule fired");

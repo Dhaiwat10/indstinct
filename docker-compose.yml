@@ -1,0 +1,45 @@
+# One bot, one reverse proxy. `docker compose up -d --build`, then `docker compose logs -f bot`
+# to see the WhatsApp pairing code. Needs DOMAIN in .env for Caddy's certificate.
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      PORT: "3000"
+    volumes:
+      # Named volume: the bot runs as a non-root user and a fresh host folder would be root-owned.
+      - data:/data
+    # Chromium needs more than Docker's default 64 MB of /dev/shm.
+    shm_size: 1gb
+    init: true
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))\""]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env, e.g. bot.example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - bot
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

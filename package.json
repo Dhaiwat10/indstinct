@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "smoke:nearai": "tsx scripts/smoke-nearai.ts",
     "bench:tools": "tsx scripts/bench-tools.ts",
-    "eval:chat": "tsx scripts/eval-chat.ts"
+    "eval:chat": "tsx scripts/eval-chat.ts",
+    "test:gmail": "tsx scripts/test-gmail.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "3.0.82",

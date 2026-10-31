@@ -19,6 +19,12 @@ const schema = z.object({
   MODEL_EXTRACT: z.string().default("Qwen/Qwen3.6-35B-A3B-FP8"),
   MODEL_WHISPER: z.string().default("openai/whisper-large-v3"),
   TAVILY_API_KEY: z.string().optional(),
+  // Google OAuth "Web application" client; Gmail features are off until both are set.
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  // Where the OAuth callback server is reachable from the user's browser; ${PUBLIC_URL}/gmail/callback must be an authorised redirect URI.
+  PUBLIC_URL: z.string().url().optional(),
+  PORT: z.coerce.number().int().default(3000),
   ALLOWED_NUMBERS: list,
   WA_PAIR_NUMBER: z.string().default("").transform((s) => s.replace(/\D/g, "")),
   DEFAULT_TZ: z.string().default("Asia/Kolkata"),
@@ -32,4 +38,8 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const config = parsed.data;
+export const config = {
+  ...parsed.data,
+  PUBLIC_URL: (parsed.data.PUBLIC_URL ?? `http://localhost:${parsed.data.PORT}`).replace(/\/$/, ""),
+  GMAIL_ENABLED: !!(parsed.data.GOOGLE_CLIENT_ID && parsed.data.GOOGLE_CLIENT_SECRET),
+};

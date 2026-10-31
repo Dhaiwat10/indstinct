@@ -1,12 +1,13 @@
 import { generateText, stepCountIs, tool } from "ai";
-import { isIP } from "node:net";
 import { chromium, type Browser, type Page } from "playwright";
 import { z } from "zod";
 import { log } from "../log.js";
+import { blockedHost } from "../net/safe-url.js";
 import { models } from "../nearai/client.js";
 
-const TIMEOUT_MS = 60_000;
-const MAX_STEPS = 12;
+// Browsing is the slowest thing the bot does; keep the budget tight. read_page covers plain reading.
+const TIMEOUT_MS = 45_000;
+const MAX_STEPS = 8;
 const SNAPSHOT_CHARS = 8000;
 
 let browser: Promise<Browser> | undefined;
@@ -18,21 +19,9 @@ function getBrowser(): Promise<Browser> {
   return browser;
 }
 
-/** The browser runs on our machine, so it must never reach localhost or the private network. */
-function blockedHost(host: string): boolean {
-  const h = host.replace(/^\[|\]$/g, "").toLowerCase();
-  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal")) return true;
-  if (isIP(h) === 4) {
-    const [a, b] = h.split(".").map(Number) as [number, number];
-    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
-  }
-  if (isIP(h) === 6) return h === "::1" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80") || h.startsWith("::ffff:");
-  return false;
-}
-
 async function snapshot(page: Page): Promise<string> {
   await page.waitForLoadState("domcontentloaded").catch(() => {});
-  await page.waitForTimeout(800); // let client-side rendering settle
+  await page.waitForTimeout(400); // let client-side rendering settle
   const tree = await page.locator("body").ariaSnapshot({ timeout: 10_000 }).catch((err) => `(couldn't read page: ${err.message})`);
   const text = tree.length > SNAPSHOT_CHARS ? `${tree.slice(0, SNAPSHOT_CHARS)}\n…(truncated)` : tree;
   return `URL: ${page.url()}\nTitle: ${await page.title()}\n\n${text}`;

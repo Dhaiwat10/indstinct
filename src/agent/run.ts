@@ -14,6 +14,7 @@ import { remember } from "./tools/remember.js";
 import { cancelSchedule, listSchedules, scheduleRecurring, setReminder } from "./tools/schedule.js";
 import { addTodo, completeTodo, listTodos } from "./tools/todos.js";
 import { updateProfile } from "./tools/update-profile.js";
+import { readPage } from "./tools/read-page.js";
 import { webSearch } from "./tools/web-search.js";
 import { gmailFor } from "../gmail/client.js";
 
@@ -105,7 +106,8 @@ export async function runAgent(user: User, turn: Turn): Promise<AgentResult> {
     add_todo: addTodo(user),
     complete_todo: completeTodo(user),
     list_todos: listTodos(user),
-    web_search: webSearch,
+    web_search: webSearch(),
+    read_page: readPage(),
     browse: browse(),
     // A scheduled run can't schedule more runs.
     ...(!turn.scheduled && {

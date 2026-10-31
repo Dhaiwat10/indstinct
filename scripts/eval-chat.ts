@@ -22,7 +22,7 @@ const { openTodos } = await import("../src/db/todos.js");
 const { getUser, markOnboarded, upsertUser } = await import("../src/db/users.js");
 
 type User = NonNullable<ReturnType<typeof getUser>>;
-type Ctx = { reply: string; tools: { name: string; input: any }[]; user: User };
+type Ctx = { reply: string; tools: { name: string; input: any }[]; user: User; ms: number };
 type Check = (c: Ctx) => string | true;
 type Turn = { say: string; check?: Check; waitMs?: number; resetAfter?: boolean };
 type Convo = { name: string; fresh?: boolean; turns: Turn[] };
@@ -56,6 +56,11 @@ const script = (re: RegExp, name: string): Check => (c) => ratio(c.reply, re) > 
 const maxLen = (n: number): Check => (c) => c.reply.length <= n || `reply is ${c.reply.length} chars (max ${n})`;
 const contains = (re: RegExp): Check => (c) => re.test(c.reply) || `reply missing ${re}`;
 const noTools: Check = (c) => c.tools.length === 0 || `called ${c.tools.map((t) => t.name).join(", ")}`;
+const count = (c: Ctx, name: string) => c.tools.filter((t) => t.name === name).length;
+/** Live-info questions should stop at search or a page read: browsing is the 30-60s path. */
+const noBrowse: Check = (c) => !used(c, "browse") || "browsed";
+const within = (s: number): Check => (c) => c.ms <= s * 1000 || `took ${(c.ms / 1000).toFixed(1)}s (max ${s}s)`;
+const fastLookup = (s = 20): Check => all((c) => used(c, "web_search") || "no web_search", noBrowse, (c) => count(c, "web_search") <= 2 || `${count(c, "web_search")} web_search calls`, within(s));
 
 // --- conversations -------------------------------------------------------------
 
@@ -144,10 +149,13 @@ const CONVOS: Convo[] = [
   {
     name: "search follow-up",
     turns: [
-      { say: "what's the latest news about ISRO?", check: (c) => used(c, "web_search") || "no web_search" },
-      { say: "tell me more about the first one", check: maxLen(2000) },
+      { say: "what's the latest news about ISRO?", check: fastLookup() },
+      { say: "tell me more about the first one", check: all(maxLen(2000), noBrowse, within(25)) },
     ],
   },
+  { name: "headlines", turns: [{ say: "any big news in India today?", check: fastLookup() }] },
+  { name: "live price", turns: [{ say: "what's the gold rate in Mumbai today?", check: fastLookup() }] },
+  { name: "live score", turns: [{ say: "how did India do in their last cricket match?", check: fastLookup() }] },
   { name: "chit-chat", turns: [{ say: "haha kaise ho yaar", check: all(noTools, maxLen(300)) }] },
   { name: "quick math", turns: [{ say: "what's 15% of 2400?", check: all(contains(/360/), maxLen(250)) }] },
   { name: "thanks", turns: [{ say: "thanks!", check: all(noTools, maxLen(150)) }] },
@@ -205,7 +213,7 @@ async function runConvo(convo: Convo, i: number): Promise<Row[]> {
     let row: Row;
     try {
       const { reply, tools } = await runAgent(user, { text: turn.say, images: [] });
-      const ctx = { reply, tools: tools.map((t) => ({ name: t.name, input: t.input })), user };
+      const ctx = { reply, tools: tools.map((t) => ({ name: t.name, input: t.input })), user, ms: Date.now() - t0 };
       const ok = turn.check?.(ctx) ?? true;
       row = { convo: convo.name, turn: n + 1, say: turn.say, reply, tools: ctx.tools.map((t) => t.name), fail: ok === true ? undefined : ok, ms: Date.now() - t0 };
     } catch (err) {

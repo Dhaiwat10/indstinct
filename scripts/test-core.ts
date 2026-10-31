@@ -8,6 +8,7 @@ import { join } from "node:path";
 
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), "indstinct-core-"));
 process.env.NEAR_AI_API_KEY ??= "test";
+process.env.TAVILY_API_KEY = "test";
 process.env.LOG_LEVEL ??= "silent";
 delete process.env.GOOGLE_CLIENT_ID;
 
@@ -22,8 +23,21 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const body = { id: `c${modelCalls.length}`, object: "chat.completion", created: 0, model: "stub", choices: [{ index: 0, message: { role: "assistant", content: "Here are today's headlines." }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
     return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
   }
+  if (url === "https://api.tavily.com/search") {
+    const { query } = JSON.parse(String(init?.body));
+    searches.push({ query, at: Date.now() });
+    await new Promise((r) => setTimeout(r, 300));
+    return new Response(JSON.stringify({ answer: `answer for ${query}`, results: [{ title: `About ${query}`, url: "https://news.example/a", content: "snippet text" }] }), { status: 200 });
+  }
+  if (url === "http://93.184.216.34/article") {
+    const html = `<html><head><title>Big launch</title></head><body><nav>Home | World | Sport</nav><article><h1>Satellite launched</h1><p>${"The rocket lifted off at 11:51 pm. ".repeat(20)}</p></article><footer>© site</footer></body></html>`;
+    return new Response(html, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+  }
+  if (url === "http://93.184.216.34/redirect-inside") return new Response(null, { status: 302, headers: { location: "http://127.0.0.1:3000/health" } });
+  if (url === "http://93.184.216.34/file.pdf") return new Response("%PDF", { status: 200, headers: { "content-type": "application/pdf" } });
   return realFetch(input, init);
 }) as typeof fetch;
+const searches: { query: string; at: number }[] = [];
 
 const { db } = await import("../src/db/index.js");
 const { upsertUser, markOnboarded } = await import("../src/db/users.js");
@@ -36,6 +50,8 @@ const { runDue } = await import("../src/scheduler/tick.js");
 const { setReminder, scheduleRecurring, cancelSchedule } = await import("../src/agent/tools/schedule.js");
 const { addTodo, completeTodo } = await import("../src/agent/tools/todos.js");
 const { handleCommand } = await import("../src/commands.js");
+const { webSearch } = await import("../src/agent/tools/web-search.js");
+const { readPage } = await import("../src/agent/tools/read-page.js");
 
 let passed = 0;
 const test = async (name: string, fn: () => Promise<void> | void) => {
@@ -252,6 +268,39 @@ await test("normal text isn't a command; unknown commands fall through to the ag
   assert.equal(await handleCommand(u, "remind me at 7"), undefined);
   assert.equal(await handleCommand(u, "/notacommand"), undefined);
   assert.match((await handleCommand(u, "/help")) as string, /\/reminders/);
+});
+
+console.log("web tools");
+await test("web_search runs several queries in parallel and leads with the quick answer", async () => {
+  searches.length = 0;
+  const t0 = Date.now();
+  const out = await exec(webSearch(), { queries: ["india news today", "sensex today", "gold price mumbai"], news: true });
+  assert.equal(searches.length, 3);
+  assert.ok(Date.now() - t0 < 800, `took ${Date.now() - t0}ms; queries ran one after another`);
+  assert.match(out, /Quick answer: answer for india news today/);
+  assert.match(out, /Quick answer: answer for gold price mumbai/);
+});
+await test("web_search allows 3 calls per message, then says to answer", async () => {
+  const s = webSearch();
+  for (let i = 0; i < 3; i++) assert.match(await exec(s, { queries: ["q"] }), /Quick answer/);
+  assert.match(await exec(s, { queries: ["q"] }), /search limit reached/);
+});
+await test("read_page returns the article text without menus and footers", async () => {
+  const out = await exec(readPage(), { url: "http://93.184.216.34/article" });
+  assert.match(out, /^URL: http:\/\/93\.184\.216\.34\/article\nTitle: Big launch/);
+  assert.ok(out.includes("Satellite launched") && out.includes("11:51 pm"));
+  assert.ok(!out.includes("Home | World") && !out.includes("© site"));
+});
+await test("read_page refuses private addresses, directly and through a redirect", async () => {
+  assert.match(await exec(readPage(), { url: "http://127.0.0.1:3000/health" }), /not allowed/);
+  assert.match(await exec(readPage(), { url: "http://192.168.1.1/" }), /not allowed/);
+  assert.match(await exec(readPage(), { url: "http://93.184.216.34/redirect-inside" }), /not allowed/);
+});
+await test("read_page says plainly when a URL isn't a readable page", async () => {
+  assert.match(await exec(readPage(), { url: "http://93.184.216.34/file.pdf" }), /application\/pdf; can't read it as text/);
+});
+await test("browse is limited to one per message", async () => {
+  assert.equal((await import("../src/agent/tools/browse.js")).BROWSE_PER_TURN, 1);
 });
 
 /** Runs a pass as if a minute had passed, so the one-unsolicited-message-a-minute gate allows a retry. */

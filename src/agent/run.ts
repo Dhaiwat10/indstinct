@@ -14,8 +14,12 @@ import { remember } from "./tools/remember.js";
 import { cancelSchedule, listSchedules, scheduleRecurring, setReminder } from "./tools/schedule.js";
 import { addTodo, completeTodo, listTodos } from "./tools/todos.js";
 import { updateProfile } from "./tools/update-profile.js";
+import { readPage } from "./tools/read-page.js";
 import { webSearch } from "./tools/web-search.js";
 import { gmailFor } from "../gmail/client.js";
+
+/** Something a tool started that the user should hear about before the reply arrives. */
+export type ProgressEvent = "browsing";
 
 export type Turn = {
   text: string;
@@ -23,6 +27,8 @@ export type Turn = {
   waMessageId?: string;
   /** Set when a recurring task fires: `text` is its prompt, and nobody is waiting on a chat reply. */
   scheduled?: { id: number; description: string };
+  /** Called when a long job starts, so the channel can tell the user instead of leaving them on "typing…". */
+  progress?: (event: ProgressEvent) => void;
 };
 
 const linkInferences = db.prepare(
@@ -70,6 +76,30 @@ function traces(steps: StepResult<ToolSet>[]): ToolTrace[] {
   );
 }
 
+/** Logs how long each tool call takes; the step log alone can't separate model time from tool time. */
+function timed<T extends ToolSet>(tools: T, userId: string): T {
+  return Object.fromEntries(
+    Object.entries(tools).map(([name, t]) => {
+      const execute = t.execute as ((input: unknown, options: unknown) => Promise<unknown>) | undefined;
+      if (!execute) return [name, t];
+      return [
+        name,
+        {
+          ...t,
+          execute: async (input: unknown, options: unknown) => {
+            const t0 = Date.now();
+            try {
+              return await execute(input, options);
+            } finally {
+              log.info({ user: userId, tool: name, ms: Date.now() - t0 }, "tool call");
+            }
+          },
+        },
+      ];
+    }),
+  ) as T;
+}
+
 /** Some reasoning models leak think blocks or leading blank lines into content. */
 function clean(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
@@ -105,8 +135,9 @@ export async function runAgent(user: User, turn: Turn): Promise<AgentResult> {
     add_todo: addTodo(user),
     complete_todo: completeTodo(user),
     list_todos: listTodos(user),
-    web_search: webSearch,
-    browse: browse(),
+    web_search: webSearch(user.timezone),
+    read_page: readPage(user.timezone),
+    browse: browse(turn.progress),
     // A scheduled run can't schedule more runs.
     ...(!turn.scheduled && {
       set_reminder: setReminder(user),
@@ -120,15 +151,33 @@ export async function runAgent(user: User, turn: Turn): Promise<AgentResult> {
     : buildSystemPrompt(user);
 
   const t0 = Date.now();
+  let stepStart = t0;
+  let stepNo = 0;
   const result = await inferenceContext.run({ userId: user.id }, () =>
     generateText({
       // The primary model has no vision; image turns go to the vision model, tools and all.
       model: turn.images.length ? models.vision() : turn.scheduled ? models.heavy() : models.primary(),
       system,
       messages,
-      tools: toolset,
+      tools: timed(toolset, user.id),
       stopWhen: stepCountIs(8),
       maxRetries: 0, // capturingFetch retries
+      // A step is one model call plus the tools it asked for; "tool call" lines give the split.
+      onStepFinish: (step) => {
+        log.info(
+          {
+            user: user.id,
+            step: ++stepNo,
+            ms: Date.now() - stepStart,
+            finish: step.finishReason,
+            tools: step.toolCalls.map((c) => c.toolName),
+            inTokens: step.usage.inputTokens,
+            outTokens: step.usage.outputTokens,
+          },
+          "agent step",
+        );
+        stepStart = Date.now();
+      },
     }),
   );
 

@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "smoke:nearai": "tsx scripts/smoke-nearai.ts",
     "bench:tools": "tsx scripts/bench-tools.ts",
+    "bench:search": "tsx scripts/bench-search.ts",
     "eval:chat": "tsx scripts/eval-chat.ts",
     "test:gmail": "tsx scripts/test-gmail.ts",
     "test:core": "tsx scripts/test-core.ts",

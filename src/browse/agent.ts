@@ -5,8 +5,8 @@ import { z } from "zod";
 import { log } from "../log.js";
 import { models } from "../nearai/client.js";
 
-const TIMEOUT_MS = 60_000;
-const MAX_STEPS = 12;
+const TIMEOUT_MS = 240_000;
+const MAX_STEPS = 20;
 const SNAPSHOT_CHARS = 8000;
 
 let browser: Promise<Browser> | undefined;

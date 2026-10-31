@@ -1,6 +1,6 @@
 import type { WASocket } from "baileys";
 import "./db/index.js";
-import { runAgent } from "./agent/run.js";
+import { runAgent, type ProgressEvent } from "./agent/run.js";
 import { handleCommand } from "./commands.js";
 import { upsertUser } from "./db/users.js";
 import { config } from "./config.js";
@@ -22,6 +22,14 @@ const devanagari = /[\u0900-\u097F]/;
 
 function slowNotice(text: string): string {
   return devanagari.test(text) ? "एक सेकंड, देख रहा हूँ… ⏳" : "One sec, on it… ⏳";
+}
+
+/** Sent the moment a long job starts, in place of the generic slow notice. */
+function progressNotice(event: ProgressEvent, text: string): string {
+  switch (event) {
+    case "browsing":
+      return devanagari.test(text) ? "साइट खोल रहा हूँ, इसमें एक-दो मिनट लग सकते हैं ⏳" : "Opening the site now, this can take a minute or two ⏳";
+  }
 }
 
 function failureMessage(err: unknown): string {
@@ -50,14 +58,23 @@ async function respond(sock: WASocket, burst: Inbound[]): Promise<void> {
   const images = burst.flatMap((m) => (m.image ? [m.image] : []));
   log.info({ user: user.id, text, images: images.length, messages: burst.length }, "inbound");
   await typing(sock, last.chatJid, true);
-  // WhatsApp drops "typing…" after ~25s; browsing can take a minute.
+  // WhatsApp drops "typing…" after ~25s; browsing can take minutes.
   const keepTyping = setInterval(() => void typing(sock, last.chatJid, true), 10_000);
   let slow: NodeJS.Timeout | undefined;
+  // One interim message per turn at most: whichever of "slow" and "browsing" comes first.
+  let noticed = false;
+  const notice = (message: string) => {
+    if (noticed) return;
+    noticed = true;
+    void sendText(sock, last.chatJid, message).catch(() => {});
+  };
   try {
     const command = images.length ? undefined : await handleCommand(user, text);
-    if (!command)
-      slow = setTimeout(() => void sendText(sock, last.chatJid, slowNotice(text)).catch(() => {}), SLOW_NOTICE_MS);
-    const result = command === undefined ? await runAgent(user, { text, images, waMessageId: last.waMessageId }) : undefined;
+    if (!command) slow = setTimeout(() => notice(slowNotice(text)), SLOW_NOTICE_MS);
+    const result =
+      command === undefined
+        ? await runAgent(user, { text, images, waMessageId: last.waMessageId, progress: (event) => notice(progressNotice(event, text)) })
+        : undefined;
     const reply = command ?? result!.reply;
     clearTimeout(slow);
     for (const part of [reply].flat()) await sendText(sock, last.chatJid, part);

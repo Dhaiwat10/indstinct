@@ -51,7 +51,8 @@ function onboarding(user: User): string {
     const missing = [!user.city && "city"].filter(Boolean);
     return missing.length ? `You don't know their ${missing.join(" or ")} yet; if it comes up naturally, ask once.` : "";
   }
-  return `This is your first conversation with this user. If their message needs something, help with that first. Then, in the same reply, welcome them in one line (what you can do: remember things about their life, reminders and to-dos, answer questions, and every reply is private and verifiable with /verify), and ask in one short question what they'd like to be called, their city, and which language they prefer. Keep the whole reply short.`;
+  const gmail = config.GMAIL_ENABLED ? ", handle their Gmail once they connect it with /gmail" : "";
+  return `This is your first conversation with this user. If their message needs something, help with that first. Then welcome them in at most two short lines: one line on what you can do (remember things about their life, reminders and to-dos, answer questions with live search${gmail}, and every reply is private and verifiable with /verify), then one short question asking what to call them and which city they're in. Don't ask about language; you mirror theirs. No lists and no other questions.`;
 }
 
 function plans(user: User): string {

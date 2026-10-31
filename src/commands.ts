@@ -1,4 +1,8 @@
+import { config } from "./config.js";
 import { db } from "./db/index.js";
+import { getGmailAccount, setGmailAlerts } from "./db/gmail.js";
+import { disconnectGmail } from "./gmail/connect.js";
+import { newConnectLink } from "./gmail/oauth.js";
 import { forget, listMemories } from "./db/memories.js";
 import { activeSchedules, cancelSchedule } from "./db/schedules.js";
 import { completeTodo, openTodos } from "./db/todos.js";
@@ -74,8 +78,45 @@ function todos(user: User): string {
     .join("\n")}\n\n/done <id> to tick one off.`;
 }
 
+async function gmail(user: User, arg: string): Promise<string> {
+  if (!config.GMAIL_ENABLED) return "Gmail isn't set up on this bot yet (no Google credentials configured).";
+  const account = getGmailAccount(user.id);
+  const sub = arg.trim().toLowerCase();
+  if (sub === "disconnect" || sub === "off") {
+    const gone = await disconnectGmail(user.id);
+    if (!gone) return "No Gmail account is connected.";
+    const extra = gone.cancelled.length ? ` Also cancelled: ${gone.cancelled.join(", ")}.` : "";
+    return `Disconnected ${gone.account.email} and wiped everything I kept from it: tokens, drafts and inbox flags. Google access is revoked too.${extra} /gmail to reconnect any time.`;
+  }
+  if (sub.startsWith("alerts")) {
+    if (!account) return "Connect Gmail first: send /gmail";
+    const on = /\bon\b/.test(sub) ? true : /\boff\b|pause|stop/.test(sub) ? false : undefined;
+    if (on === undefined) return `Inbox alerts are ${account.alerts ? "on" : "off"}. /gmail alerts on|off to change.`;
+    setGmailAlerts(user.id, on);
+    return on ? "Inbox alerts on: I'll flag important new mail during the day. 📧" : "Inbox alerts paused. /gmail alerts on to resume.";
+  }
+  if (account && !account.needs_reauth && sub !== "connect" && sub !== "reconnect") {
+    return [
+      `📧 *Gmail:* ${account.email} connected`,
+      `Inbox alerts: ${account.alerts ? "on" : "off"}`,
+      "",
+      "Just ask: \"anything important in my inbox?\", \"reply to Riya saying yes\", \"unsubscribe me from Myntra\".",
+      "/gmail alerts on|off · /gmail disconnect · /gmail reconnect",
+    ].join("\n");
+  }
+  const link = newConnectLink(user.id);
+  return [
+    account?.needs_reauth ? "Your Gmail link expired; connect it again 👇" : "Connect your Gmail and I'll handle email for you: summaries, replies from your own address (you approve every send), and a heads-up when something important lands.",
+    "",
+    link,
+    "",
+    "_Link works for 15 minutes. Mail is read live from Google, never stored, and every word runs in a NEAR AI TEE. /gmail disconnect removes everything._",
+  ].join("\n");
+}
+
 const help = `*Commands*
 /verify — prove my last reply ran in a TEE
+/gmail — connect Gmail (alerts on|off · disconnect)
 /reminders — upcoming reminders and recurring tasks
 /cancel <id> — stop a reminder or recurring task
 /todos — your to-do list
@@ -93,6 +134,9 @@ export async function handleCommand(user: User, text: string): Promise<string | 
   switch (cmd!.toLowerCase()) {
     case "verify":
       return verify(user, arg!);
+    case "gmail":
+    case "email":
+      return gmail(user, arg!);
     case "memories":
       return memories(user);
     case "forget": {

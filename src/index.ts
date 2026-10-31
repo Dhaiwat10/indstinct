@@ -3,11 +3,14 @@ import "./db/index.js";
 import { runAgent } from "./agent/run.js";
 import { handleCommand } from "./commands.js";
 import { upsertUser } from "./db/users.js";
+import { config } from "./config.js";
+import { startInboxWatch } from "./gmail/watch.js";
+import { startHttp } from "./http/server.js";
 import { log } from "./log.js";
 import { InferenceUnavailable } from "./nearai/capture.js";
 import { startScheduler } from "./scheduler/tick.js";
 import { onInbound, type Inbound } from "./wa/inbound.js";
-import { sendText, typing } from "./wa/outbound.js";
+import { sendFile, sendText, typing } from "./wa/outbound.js";
 import { connect } from "./wa/socket.js";
 
 /** People send three short messages in a row; wait this long after the last one and reply once. */
@@ -54,9 +57,11 @@ async function respond(sock: WASocket, burst: Inbound[]): Promise<void> {
     const command = images.length ? undefined : await handleCommand(user, text);
     if (!command)
       slow = setTimeout(() => void sendText(sock, last.chatJid, slowNotice(text)).catch(() => {}), SLOW_NOTICE_MS);
-    const reply = command ?? (await runAgent(user, { text, images, waMessageId: last.waMessageId })).reply;
+    const result = command === undefined ? await runAgent(user, { text, images, waMessageId: last.waMessageId }) : undefined;
+    const reply = command ?? result!.reply;
     clearTimeout(slow);
     for (const part of [reply].flat()) await sendText(sock, last.chatJid, part);
+    for (const f of result?.files ?? []) await sendFile(sock, last.chatJid, f.data, f.mimeType, f.name);
   } catch (err) {
     log.error({ err, user: user.id }, "turn failed");
     await sendText(sock, last.chatJid, failureMessage(err)).catch(() => {});
@@ -79,13 +84,16 @@ function flush(sock: WASocket, chatJid: string): void {
 
 // The scheduler outlives reconnects: it sends through the open socket and pauses while there is none.
 let current: WASocket | undefined;
-startScheduler(
-  async (jid, text) => {
-    if (!current) throw new Error("WhatsApp not connected");
-    await sendText(current, jid, text);
-  },
-  () => !!current,
-);
+const send = async (jid: string, text: string) => {
+  if (!current) throw new Error("WhatsApp not connected");
+  await sendText(current, jid, text);
+};
+const connected = () => !!current;
+startScheduler(send, connected);
+// Always up, for /health; the Gmail routes just report "link expired" until Gmail is configured.
+startHttp(send);
+if (config.GMAIL_ENABLED) startInboxWatch(send, connected);
+else log.info("Gmail features off: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable /gmail");
 
 await connect((sock) => {
   sock.ev.on("connection.update", ({ connection }) => {

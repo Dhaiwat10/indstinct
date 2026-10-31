@@ -4,7 +4,7 @@ import { db } from "../db/index.js";
 import { log } from "../log.js";
 
 /** Who an inference call is for; set with `inferenceContext.run(...)` around agent turns. */
-export const inferenceContext = new AsyncLocalStorage<{ userId?: string; messageId?: number; purpose?: "agent" | "extract" }>();
+export const inferenceContext = new AsyncLocalStorage<{ userId?: string; messageId?: number; purpose?: "agent" | "extract" | "triage" }>();
 
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 

@@ -77,6 +77,32 @@ CREATE TABLE IF NOT EXISTS inference_log (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS inference_log_completion ON inference_log(completion_id);
+
+CREATE TABLE IF NOT EXISTS gmail_accounts (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  email TEXT NOT NULL,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,      -- epoch ms
+  alerts INTEGER NOT NULL DEFAULT 0,  -- opt-in: flag important new mail during the day
+  watch_cursor INTEGER NOT NULL,    -- epoch ms of the newest inbox message already looked at
+  flags_day TEXT,                   -- yyyy-mm-dd the daily flag counter is for
+  flags_today INTEGER NOT NULL DEFAULT 0,
+  needs_reauth INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+-- Email the agent has drafted but not sent. Sending needs a later turn than drafting.
+CREATE TABLE IF NOT EXISTS email_drafts (
+  id INTEGER PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  gmail_draft_id TEXT NOT NULL,
+  to_addr TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_ms INTEGER NOT NULL,
+  sent_at TEXT
+);
 `;
 
 /** Columns added after a table first shipped: [table, column, definition]. */

@@ -21,6 +21,11 @@ export async function sendText(sock: WASocket, jid: string, text: string): Promi
   for (const chunk of split(text)) await sock.sendMessage(jid, { text: chunk });
 }
 
+/** Delivers a file (e.g. an email attachment) as a WhatsApp document. */
+export async function sendFile(sock: WASocket, jid: string, data: Buffer, mimetype: string, fileName: string): Promise<void> {
+  await sock.sendMessage(jid, { document: data, mimetype, fileName });
+}
+
 export async function typing(sock: WASocket, jid: string, on: boolean): Promise<void> {
   await sock.sendPresenceUpdate(on ? "composing" : "paused", jid).catch(() => {});
 }

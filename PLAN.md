@@ -367,3 +367,22 @@ LOG_LEVEL=info
 - [ ] NEAR AI usage explicit: models used, TEE tier, verification flow, link to Verification Center
 - [ ] Bot live on VPS; judges' numbers allowlisted (or allowlist off)
 - [ ] Honest "limitations & next steps" section (official WhatsApp API, full DCAP verification, memory retrieval at scale)
+
+---
+
+## 14. Email (Gmail) — added Day 5
+
+Parity target is what Instinct does with a linked Gmail: read/search/summarise, draft and reply from the user's own address, a morning inbox rundown, daytime flags for mail that needs attention, follow-up nudges on threads waiting on a reply, unsubscribe from promos, pull files out of attachments. Reviews of Instinct complain about two things: it sent mail before the user approved the text, and disconnecting didn't delete what it had stored. Both are designed out here.
+
+| Piece | Where | Notes |
+|---|---|---|
+| OAuth | `src/http/server.ts`, `src/gmail/oauth.ts` | The only HTTP surface. `/gmail` → 15-min single-use link → Google consent (`gmail.modify`, offline) → callback stores tokens in `gmail_accounts` and messages the user on WhatsApp. |
+| Gmail client | `src/gmail/client.ts`, `mime.ts` | Raw REST over fetch, auto-refresh, 401 retry, `invalid_grant` → `needs_reauth`. No `googleapis` dependency. MIME is flattened to text (html→text, quoted replies stripped); nothing is cached. |
+| Tools | `src/agent/tools/email.ts` | `email_search`, `email_read`, `email_draft`, `email_send`, `email_modify`, `email_unsubscribe`, `email_attachment`. Registered only when the user is connected; scheduled runs get just search+read. |
+| Send guard | `email_drafts.created_ms` vs turn start | A draft can't be sent in the turn that wrote it (or rewrote it). The user always sees the text first. Drafts live in Gmail Drafts too, so they can edit there and the edited version is what goes out. |
+| Morning brief | prompt guidance only | Opt-in. "Inbox brief every morning at 8" → the normal `schedule_recurring` tool with a prompt the system prompt suggests (last day's important mail + sent threads awaiting a reply). Connecting Gmail never creates a schedule. |
+| Inbox watch | `src/gmail/watch.ts` | Opt-in (`email_alerts` tool or `/gmail alerts on`; the cursor starts from the moment it's enabled). Every 5 min: new Primary-inbox mail since `watch_cursor` → `MODEL_EXTRACT` triage (`purpose='triage'`, inside the TEE) → one-line flag with an offer. Caps: proactive gate (1/min), 8 flags/day. |
+| Prompt injection | `email_read` output + prompt | Every body is prefixed as untrusted third-party text; the triage prompt says the same. |
+| Disconnect | `disconnectGmail()` | Revokes at Google, deletes account + drafts, cancels recurring tasks that read mail, deletes flag messages, strips `email_*` tool traces from history. |
+
+Not done: attachments *to* outgoing mail, HTML replies, Gmail push (we poll), encrypting tokens at rest in SQLite.

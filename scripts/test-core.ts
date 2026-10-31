@@ -32,6 +32,7 @@ const { openTodos, addTodo: addTodoRow } = await import("../src/db/todos.js");
 const { listMemories, remember: rememberRow } = await import("../src/db/memories.js");
 const { history } = await import("../src/db/messages.js");
 const { parseAt, nextCron, formatWhen } = await import("../src/scheduler/time.js");
+const { noDashes } = await import("../src/text.js");
 const { runDue } = await import("../src/scheduler/tick.js");
 const { setReminder, scheduleRecurring, cancelSchedule } = await import("../src/agent/tools/schedule.js");
 const { addTodo, completeTodo } = await import("../src/agent/tools/todos.js");
@@ -69,6 +70,20 @@ const send = async (jid: string, text: string) => void sent.push({ jid, text });
 const sendFails = async () => {
   throw new Error("WhatsApp not connected");
 };
+
+console.log("no em dashes");
+await test("em dashes become commas, bullets stay bullets, ranges keep their en dash", () => {
+  const cases: [string, string][] = [
+    ["Bengaluru — 27°C, clear", "Bengaluru, 27°C, clear"],
+    ["*US midterms*—early voting surging", "*US midterms*, early voting surging"],
+    ["Highs of 30–31°C", "Highs of 30–31°C"],
+    ["Done – I'll ping you at 7", "Done, I'll ping you at 7"],
+    ["— first\n— second", "• first\n• second"],
+    ["That's it —", "That's it"],
+    ["Sure — .", "Sure."],
+  ];
+  for (const [input, want] of cases) assert.equal(noDashes(input), want, input);
+});
 
 console.log("time parsing");
 await test("parseAt needs a UTC offset", () => {

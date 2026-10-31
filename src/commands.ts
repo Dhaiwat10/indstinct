@@ -115,16 +115,16 @@ async function gmail(user: User, arg: string): Promise<string> {
 }
 
 const help = `*Commands*
-/verify — prove my last reply ran in a TEE
-/gmail — connect Gmail (alerts on|off · disconnect)
-/reminders — upcoming reminders and recurring tasks
-/cancel <id> — stop a reminder or recurring task
-/todos — your to-do list
-/done <id> — tick off a to-do
-/memories — what I remember about you
-/forget <id> — forget a memory (ids from /memories)
-/reset — clear our chat history (memories stay)
-/help — this list`;
+/verify: prove my last reply ran in a TEE
+/gmail: connect Gmail (alerts on|off · disconnect)
+/reminders: upcoming reminders and recurring tasks
+/cancel <id>: stop a reminder or recurring task
+/todos: your to-do list
+/done <id>: tick off a to-do
+/memories: what I remember about you
+/forget <id>: forget a memory (ids from /memories)
+/reset: clear our chat history (memories stay)
+/help: this list`;
 
 /** Handles a slash command without the LLM. Returns undefined if `text` isn't one. */
 export async function handleCommand(user: User, text: string): Promise<string | string[] | undefined> {
@@ -162,7 +162,7 @@ export async function handleCommand(user: User, text: string): Promise<string | 
     }
     case "reset":
       clearHistory(user.id);
-      return "Chat history cleared. I still remember what you've told me — /memories to see it.";
+      return "Chat history cleared. I still remember what you've told me. Send /memories to see it.";
     case "help":
       return help;
     default:

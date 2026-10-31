@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { config } from "../config.js";
 import { log } from "../log.js";
 import { onGmailConnected } from "../gmail/connect.js";
+import { homePage, privacyPage, termsPage } from "./pages.js";
 import { authUrl, consumeConnectToken, exchangeCode, OAuthError, peekConnectToken } from "../gmail/oauth.js";
 import { Gmail } from "../gmail/client.js";
 import { deleteGmailAccount, getGmailAccount, saveGmailAccount } from "../db/gmail.js";
@@ -21,6 +22,9 @@ function html(res: ServerResponse, status: number, body: string): void {
 async function handle(req: IncomingMessage, res: ServerResponse, send: Send): Promise<void> {
   const url = new URL(req.url ?? "/", config.PUBLIC_URL);
   if (url.pathname === "/health") return void res.writeHead(200).end("ok");
+  if (url.pathname === "/") return html(res, 200, homePage);
+  if (url.pathname === "/privacy") return html(res, 200, privacyPage);
+  if (url.pathname === "/terms") return html(res, 200, termsPage);
 
   if (url.pathname === "/gmail/connect") {
     const t = url.searchParams.get("t") ?? "";

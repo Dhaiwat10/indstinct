@@ -1,0 +1,104 @@
+name: CI and deploy
+
+# check:  offline tests, fast and deterministic. Gates every deploy.
+# eval:   the live chat eval against NEAR AI, on PRs only. Shows how the model behaves; a red
+#         result is a warning to read before merging, not a merge blocker.
+# deploy: on push to main (i.e. merges), after check passes.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  eval:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      NEAR_AI_API_KEY: ${{ secrets.NEAR_AI_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      LOG_LEVEL: error
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The model may decide to browse; give it the same headless Chromium the droplet has.
+      - run: pnpm exec playwright install --with-deps --only-shell chromium
+      - name: Live chat eval
+        id: eval
+        run: |
+          if [ -z "$NEAR_AI_API_KEY" ]; then echo "::error::NEAR_AI_API_KEY secret is not set"; exit 1; fi
+          set +e
+          pnpm --silent eval:chat > eval.txt 2>&1
+          code=$?
+          cat eval.txt
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Post results on the PR
+        if: always() && steps.eval.outputs.code != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          CODE: ${{ steps.eval.outputs.code }}
+        run: |
+          {
+            if [ "$CODE" = "0" ]; then echo "### ✅ Live chat eval passed"; else echo "### ⚠️ Live chat eval: some hard checks failed"; fi
+            echo
+            echo "Real conversations through the agent on NEAR AI. Model replies vary run to run, so read failures before deciding; re-run the job if one looks like a fluke."
+            echo
+            echo '```'
+            tail -c 60000 eval.txt
+            echo '```'
+          } > comment.md
+          cat comment.md >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment "$PR" --edit-last --body-file comment.md 2>/dev/null || gh pr comment "$PR" --body-file comment.md
+          [ "$CODE" = "0" ]
+
+  deploy:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Merges that land close together deploy one after another, never at once.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Deploy to the droplet
+        env:
+          DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+        run: |
+          if [ -z "$DROPLET_SSH_KEY" ]; then echo "::error::DROPLET_SSH_KEY secret is not set"; exit 1; fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DROPLET_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          # Pinned host key: the job refuses to talk to anything that isn't our droplet.
+          echo "64.227.154.196 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDw/ggfb1Qde2OMm+BMEqMt9KpnoTexLNbvi93wjYLem" > ~/.ssh/known_hosts
+          # The key is a forced command on the server: it can only run /usr/local/bin/indstinct-deploy
+          # (fetch main, rebuild, restart, wait for /health), whatever we send here.
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 root@64.227.154.196

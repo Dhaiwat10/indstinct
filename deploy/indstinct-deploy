@@ -1,0 +1,58 @@
+#!/bin/sh
+# Run by GitHub Actions over SSH (forced command for the CI key). Pulls main, rebuilds,
+# restarts, and waits for /health. If the new version fails to build or come up, rolls back
+# to the commit that was running and exits non-zero so the CI run goes red. One at a time.
+set -u
+exec 9>/var/lock/indstinct-deploy.lock
+flock -w 1200 9 || { echo "another deploy is still running"; exit 1; }
+
+cd /root/indstinct
+DOMAIN=$(sed -n "s/^DOMAIN=//p" .env)
+PREV=$(git rev-parse HEAD)
+TARGET=${INDSTINCT_DEPLOY_REF:-origin/main}   # only overridden by manual rollback tests
+
+up() { curl -fsS --max-time 5 "https://$DOMAIN/health" >/dev/null 2>&1; }
+restarts() { docker inspect -f "{{.RestartCount}}" "$(docker compose ps -aq bot)" 2>/dev/null || echo 99; }
+# Answering /health once isn't enough: a version can serve it for a moment and then crash.
+# Require it up, then still up 20s later with no container restart in between.
+healthy() {
+  i=0
+  until up; do i=$((i + 1)); [ "$i" -ge 30 ] && return 1; sleep 2; done
+  sleep 20
+  [ "$(restarts)" = "0" ] && up
+}
+build_and_start() {
+  # Check the build's own exit code: a failed build leaves the old container running,
+  # so "is the bot up?" alone can't tell a failed build from a good one.
+  docker compose build bot > /tmp/indstinct-build.log 2>&1
+  rc=$?
+  grep -vE '^#[0-9]+ (sha256|extracting|\[internal\])' /tmp/indstinct-build.log | tail -25
+  [ "$rc" -eq 0 ] || return 1
+  docker compose up -d --remove-orphans 2>&1 | tail -5
+}
+rollback() {
+  echo "== $1; rolling back to $(git log --oneline -1 "$PREV")"
+  docker compose logs --tail 20 bot 2>&1 | tail -20
+  git reset -q --hard "$PREV"
+  if build_and_start && healthy; then
+    echo "== rolled back, bot healthy on the previous version"
+  else
+    echo "== ROLLBACK ALSO FAILED, bot may be down"
+  fi
+  exit 1
+}
+
+if [ "$TARGET" = "origin/main" ]; then
+  echo "== fetching main"
+  git fetch -q origin main || { echo "git fetch failed"; exit 1; }
+fi
+git reset -q --hard "$TARGET"
+echo "deploying $(git log --oneline -1) (was $(git log --oneline -1 "$PREV"))"
+
+echo "== building and restarting"
+build_and_start || rollback "build or start failed"
+echo "== waiting for https://$DOMAIN/health"
+healthy || rollback "health check failed"
+docker image prune -f >/dev/null
+echo "== deployed, bot healthy"
+docker compose ps --format "{{.Name}} {{.Status}}"

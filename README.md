@@ -15,7 +15,7 @@ docker compose up -d --build
 docker compose logs -f bot          # shows the 8-char WhatsApp pairing code; enter it on the SIM's phone under Linked devices
 ```
 
-The `data` volume holds the SQLite database and the WhatsApp session, so `docker compose up -d --build` after a `git pull` keeps everything. Back it up with `docker run --rm -v indstinct_data:/data -v "$PWD":/out alpine tar czf /out/indstinct-data.tgz -C / data`. Pair the server fresh rather than copying a laptop's `data/auth` across while the laptop bot is still running; two live sessions on one number fight each other. `curl https://bot.example.com/health` should say `ok`.
+After editing `.env` on the server, apply it with `docker compose up -d --force-recreate bot`. The `data` volume holds the SQLite database and the WhatsApp session, so `docker compose up -d --build` after a `git pull` keeps everything. Back it up with `docker run --rm -v indstinct_data:/data -v "$PWD":/out alpine tar czf /out/indstinct-data.tgz -C / data`. Pair the server fresh rather than copying a laptop's `data/auth` across while the laptop bot is still running; two live sessions on one number fight each other. `curl https://bot.example.com/health` should say `ok`.
 
 **CI and continuous deploy** (`.github/workflows/deploy.yml`):
 
@@ -34,7 +34,7 @@ Setup:
 1. Google Cloud → APIs & Services → enable the **Gmail API**.
 2. OAuth consent screen: External, add yourself (and the judges) as test users. Scope: `gmail.modify`.
 3. Credentials → OAuth client ID → **Web application**; authorised redirect URI `${PUBLIC_URL}/gmail/callback`, e.g. `https://bot.example.com/gmail/callback`. (Locally the link is opened on your phone, so `localhost` won't do; deploy first, or use a tunnel and register its URL.)
-4. Put `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `PUBLIC_URL` in `.env` and restart. Without them the bot runs with Gmail off.
+4. Put `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `PUBLIC_URL` in `.env`, then `docker compose up -d --force-recreate bot`. Plain `docker compose up -d` can keep the old container and miss `.env` edits. Without these values the bot runs with Gmail off.
 
 While the consent screen is in Testing status only listed test users can connect and refresh tokens expire after 7 days (the bot then asks them to `/gmail` again). Publishing needs Google's review because `gmail.modify` is a restricted scope.
 

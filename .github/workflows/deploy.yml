@@ -37,6 +37,10 @@ jobs:
     env:
       NEAR_AI_API_KEY: ${{ secrets.NEAR_AI_API_KEY }}
       TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      # Placeholder Google client so the eval sees Gmail as available (the welcome should mention /gmail).
+      # No eval user connects Gmail, so nothing ever calls Google with these.
+      GOOGLE_CLIENT_ID: eval.apps.googleusercontent.com
+      GOOGLE_CLIENT_SECRET: eval
       LOG_LEVEL: error
     steps:
       - uses: actions/checkout@v4

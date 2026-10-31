@@ -155,6 +155,10 @@ await test("home, privacy and terms pages are served (Google needs them to publi
 
 console.log("connect flow");
 let link = "";
+await test("a brand-new user's welcome mentions /gmail", async () => {
+  const fresh = upsertUser("918888888888@s.whatsapp.net", "918888888888", "New");
+  assert.match(buildSystemPrompt(fresh), /first conversation[^\n]*\/gmail/);
+});
 await test("/gmail hands out a connect link and the prompt says not connected", async () => {
   const reply = (await handleCommand(user, "/gmail")) as string;
   link = reply.match(/http:\/\/localhost:3999\/gmail\/connect\?t=\S+/)![0];

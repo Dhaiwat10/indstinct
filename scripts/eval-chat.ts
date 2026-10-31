@@ -64,7 +64,7 @@ const CONVOS: Convo[] = [
     name: "onboarding",
     fresh: true,
     turns: [
-      { say: "hi", check: all(contains(/\?/), maxLen(500)) },
+      { say: "hi", check: all(contains(/\?/), maxLen(350), (c) => !config.GMAIL_ENABLED || /\/gmail/i.test(c.reply) || "welcome doesn't mention /gmail") },
       {
         say: "I'm Dhaiwat, based in Bangalore. English is fine",
         check: (c) => {

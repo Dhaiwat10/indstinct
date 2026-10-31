@@ -21,6 +21,45 @@ function toBytes(body: unknown): Uint8Array<ArrayBuffer> | undefined {
   return undefined;
 }
 
+const ATTEMPTS = 3;
+const ATTEMPT_TIMEOUT_MS = 60_000;
+const retryable = (status: number) => status === 429 || status >= 500;
+
+/** Thrown when NEAR AI can't produce a completion after retries; the message is safe to log. */
+export class InferenceUnavailable extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * POSTs with a per-attempt timeout, retrying timeouts, network errors, 429 and 5xx.
+ * Safe to retry: a failed completion never ran any tools.
+ */
+async function fetchWithRetry(input: Parameters<typeof fetch>[0], init: RequestInit): Promise<Response> {
+  for (let attempt = 1; ; attempt++) {
+    const signal = init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(ATTEMPT_TIMEOUT_MS)]) : AbortSignal.timeout(ATTEMPT_TIMEOUT_MS);
+    let failure: string;
+    let status: number | undefined;
+    try {
+      const res = await fetch(input, { ...init, signal });
+      if (!retryable(res.status)) return res;
+      status = res.status;
+      failure = `HTTP ${res.status}`;
+      await res.body?.cancel();
+    } catch (err) {
+      if (init.signal?.aborted) throw err; // the caller gave up; don't retry
+      failure = (err as Error).name === "TimeoutError" ? "timed out" : (err as Error).message;
+    }
+    if (attempt >= ATTEMPTS) throw new InferenceUnavailable(`NEAR AI ${failure} after ${attempt} attempts`, status);
+    log.warn({ attempt, failure }, "NEAR AI call failed, retrying");
+    await new Promise((r) => setTimeout(r, attempt * 1500));
+  }
+}
+
 /**
  * A fetch that records the exact request and response bytes of every chat completion.
  * NEAR AI signs `model:sha256(request):sha256(response)`, so we must hash the bytes on
@@ -36,9 +75,10 @@ export const capturingFetch: typeof fetch = async (input, init) => {
 
   const headers = new Headers(init?.headers);
   headers.set("accept-encoding", "identity");
-  const res = await fetch(input, { ...init, headers, body: requestBytes });
+  const res = await fetchWithRetry(input, { ...init, headers, body: requestBytes });
   const responseBytes = new Uint8Array(await res.arrayBuffer());
 
+  if (res.status === 402) log.error("NEAR AI says the account is out of credits");
   if (res.ok) {
     try {
       const reqJson = JSON.parse(Buffer.from(requestBytes).toString("utf8"));

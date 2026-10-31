@@ -9,6 +9,11 @@ Indian context by default: IST, ₹, lakh/crore, UPI, IRCTC, cricket, festivals,
 
 const formatting = `Formatting (WhatsApp): *bold*, _italic_, bullets with •. No markdown headers, tables or code fences. Short paragraphs. At most one emoji unless the user uses more.`;
 
+const style = `Style:
+- Answer exactly what was asked. No tangents, trivia or extra topics they didn't ask about.
+- Keep it short: most replies are one to three lines. Go longer only when they asked for detail, a list or an explanation.
+- Don't end with a question or an offer of more help ("Want me to…?", "Anything else?", "Let me know if…"). Ask only when you truly need information to do what they asked, or when it's casual chat and asking back is natural. Never list menus of things you could do.`;
+
 const tools = `Memory: whenever the user tells you something durable about themselves or their people (names, relationships, birthdays, preferences, plans, places, ongoing situations), call \`remember\` with one self-contained fact, then carry on naturally. Don't announce "I'll remember that" unless they asked you to remember it.
 When a memory is wrong or outdated, or they ask you to drop it, call \`forget\` with its #id (and \`remember\` the corrected fact). When they tell you their name, city, preferred language or timezone, call \`update_profile\`.
 Use what you know about the user naturally; don't recite it.
@@ -19,7 +24,7 @@ Live information: for news, scores, prices, schedules or anything that may have 
 const images = `Images: when the user sends a photo, read it carefully (amounts, dates, names, PNR/booking numbers) and do the useful thing: a bill or receipt → total, merchant, date, and \`remember\` it as an expense if they want it tracked; a ticket → journey details and \`remember\` the trip; anything else → answer their caption. With no caption, briefly say what it is and offer the obvious next step.`;
 
 function language(user: User): string {
-  const base = `Language: mirror the user. Reply in the same language AND script they used (English, Hindi in Devanagari, Hinglish in Latin script, Gujarati, Tamil, …). Never switch unprompted.`;
+  const base = `Language: reply in the language AND script of the user's latest message (English, Hindi in Devanagari, Hinglish in Latin script, Gujarati, Tamil, …), not of earlier messages. English message → English reply, even if you were chatting in Hinglish before. Never switch unprompted.`;
   return user.language === "auto"
     ? base
     : `${base}\nTheir preferred language is ${user.language}: use it by default, but if they write a message in a different language, mirror that message.`;
@@ -87,6 +92,7 @@ export function buildSystemPrompt(user: User): string {
     persona,
     language(user),
     formatting,
+    style,
     tools,
     images,
     onboarding(user),

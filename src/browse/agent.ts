@@ -108,6 +108,7 @@ export async function browse(goal: string, startUrl?: string): Promise<string> {
       tools,
       stopWhen: stepCountIs(MAX_STEPS),
       abortSignal: AbortSignal.timeout(TIMEOUT_MS),
+      maxRetries: 0, // capturingFetch retries
     });
     const answer = result.text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
     log.info({ goal, ms: Date.now() - t0, steps: result.steps.length, url: page.url() }, "browse done");

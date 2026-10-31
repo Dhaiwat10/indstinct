@@ -33,7 +33,7 @@ export async function extractMemories(user: User, userText: string, reply: strin
 
   const t0 = Date.now();
   const { output } = await inferenceContext.run({ userId: user.id, messageId: replyId, purpose: "extract" }, () =>
-    generateText({ model: models.extract(), system, prompt, output: Output.object({ schema }), maxRetries: 1 }),
+    generateText({ model: models.extract(), system, prompt, output: Output.object({ schema }), maxRetries: 0 }),
   );
 
   for (const m of output.add) remember(user.id, m.content, m.category, "inferred");

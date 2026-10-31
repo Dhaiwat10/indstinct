@@ -29,7 +29,7 @@ async function fire(s: Schedule, send: Send): Promise<void> {
   const next = nextCron(s.cron_expr!, user.timezone);
   markRan(s, typeof next === "string" ? undefined : next);
   if (typeof next === "string") log.warn({ schedule: s.id, err: next }, "cron no longer valid, deactivated");
-  const reply = await runAgent(user, { text: s.payload, images: [], scheduled: { id: s.id, description: s.description } });
+  const { reply } = await runAgent(user, { text: s.payload, images: [], scheduled: { id: s.id, description: s.description } });
   await send(jid, reply);
 }
 

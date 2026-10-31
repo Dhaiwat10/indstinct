@@ -4,6 +4,7 @@ import { runAgent } from "./agent/run.js";
 import { handleCommand } from "./commands.js";
 import { upsertUser } from "./db/users.js";
 import { log } from "./log.js";
+import { InferenceUnavailable } from "./nearai/capture.js";
 import { startScheduler } from "./scheduler/tick.js";
 import { onInbound, type Inbound } from "./wa/inbound.js";
 import { sendText, typing } from "./wa/outbound.js";
@@ -11,6 +12,24 @@ import { connect } from "./wa/socket.js";
 
 /** People send three short messages in a row; wait this long after the last one and reply once. */
 const DEBOUNCE_MS = 2500;
+/** If a reply takes longer than this, say so once instead of leaving the user staring at "typing…". */
+const SLOW_NOTICE_MS = 15_000;
+
+const devanagari = /[\u0900-\u097F]/;
+
+function slowNotice(text: string): string {
+  return devanagari.test(text) ? "एक सेकंड, देख रहा हूँ… ⏳" : "One sec, on it… ⏳";
+}
+
+function failureMessage(err: unknown): string {
+  const cause = err instanceof InferenceUnavailable ? err : (err as { cause?: unknown })?.cause;
+  if (cause instanceof InferenceUnavailable) {
+    return cause.status === 402
+      ? "I'm out of thinking credits right now 😅 My owner has been told. Try again a bit later?"
+      : "My AI backend (NEAR AI) isn't responding right now. Give it a minute and send that again?";
+  }
+  return "Sorry, something broke on my side. Try sending that again?";
+}
 
 // One turn at a time per user, so quick follow-ups see the previous reply in history.
 const queues = new Map<string, Promise<void>>();
@@ -28,15 +47,22 @@ async function respond(sock: WASocket, burst: Inbound[]): Promise<void> {
   const images = burst.flatMap((m) => (m.image ? [m.image] : []));
   log.info({ user: user.id, text, images: images.length, messages: burst.length }, "inbound");
   await typing(sock, last.chatJid, true);
+  // WhatsApp drops "typing…" after ~25s; browsing can take a minute.
+  const keepTyping = setInterval(() => void typing(sock, last.chatJid, true), 10_000);
+  let slow: NodeJS.Timeout | undefined;
   try {
-    const reply =
-      (images.length ? undefined : await handleCommand(user, text)) ??
-      (await runAgent(user, { text, images, waMessageId: last.waMessageId }));
+    const command = images.length ? undefined : await handleCommand(user, text);
+    if (!command)
+      slow = setTimeout(() => void sendText(sock, last.chatJid, slowNotice(text)).catch(() => {}), SLOW_NOTICE_MS);
+    const reply = command ?? (await runAgent(user, { text, images, waMessageId: last.waMessageId })).reply;
+    clearTimeout(slow);
     for (const part of [reply].flat()) await sendText(sock, last.chatJid, part);
   } catch (err) {
     log.error({ err, user: user.id }, "turn failed");
-    await sendText(sock, last.chatJid, "Sorry, something went wrong on my side. Try again in a moment?");
+    await sendText(sock, last.chatJid, failureMessage(err)).catch(() => {});
   } finally {
+    clearTimeout(slow);
+    clearInterval(keepTyping);
     await typing(sock, last.chatJid, false);
   }
 }

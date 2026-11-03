@@ -13,14 +13,15 @@ export function taskTools(user: User, onSecret: () => void) {
       description:
         "Start a task that does something on a website for the user in a real browser, in the background: web check-in, rescheduling or cancelling an appointment, filling in a long form. It can ask the user questions and for approval along the way, and sends files (like boarding passes) at the end. Collect what the site will need first (e.g. booking reference and surname, which passengers). Not for passwords, card payments or creating accounts.",
       inputSchema: z.object({
-        goal: z.string().min(5).describe('one sentence, e.g. "Web check-in for IndiGo PNR ABC123 for both passengers"'),
-        details: z.string().describe("everything the site will need, as plain text: references, names, dates, preferences, which site"),
+        goal: z.string().min(5).describe('one sentence, e.g. "Find the 3 cheapest flights Bengaluru to Delhi, 9 to 15 Nov" or "Web check-in for IndiGo PNR ABC123, both passengers"'),
+        details: z.string().describe("everything the site will need, as plain text: references, names, dates (as calendar dates), preferences, which site if the user named one"),
+        found_so_far: z.string().optional().describe("what a quick lookup already found, if you tried one, so the task doesn't start over"),
       }),
-      execute: async ({ goal, details }) => {
-        const r = startTask(user.id, goal, details);
+      execute: async ({ goal, details, found_so_far }) => {
+        const r = startTask(user.id, goal, found_so_far ? `${details}\n\nAlready found in a quick lookup: ${found_so_far}` : details);
         return "error" in r
           ? `not started: ${r.error}`
-          : `task #${r.id} started in the background. Tell the user in one line that you're on it and will ask before submitting anything.`;
+          : `task #${r.id} started in the background. Tell the user in one line what you're doing (e.g. "Comparing a few sites, I'll message you in a few minutes") and that you'll message them when it's done. Mention approval only if the task will submit or confirm something.`;
       },
     }),
     task_reply: tool({

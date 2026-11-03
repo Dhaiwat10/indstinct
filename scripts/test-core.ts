@@ -40,6 +40,7 @@ const { handleCommand } = await import("../src/commands.js");
 const tasks = await import("../src/tasks/runner.js");
 const { getTask, openTask } = await import("../src/db/tasks.js");
 const { taskTools } = await import("../src/agent/tools/tasks.js");
+const { nextStep } = await import("../src/agent/lookup.js");
 const { buildSystemPrompt } = await import("../src/agent/prompt.js");
 
 let passed = 0;
@@ -254,6 +255,19 @@ await test("/forget removes only that memory, and only for its owner", async () 
   assert.match((await handleCommand(other, `/forget ${a}`)) as string, /couldn't find/);
   assert.match((await handleCommand(u, `/forget ${a}`)) as string, /Forgotten \(1\)/);
   assert.deepEqual(listMemories(u.id).map((m) => m.content), ["Lives in Bengaluru"]);
+});
+
+console.log("quick-lookup allowance");
+await test("two search rounds and two page reads, then the search tools go and the model is told to hand off", () => {
+  const all = ["web_search", "read_page", "start_task", "remember"];
+  const step = (...names: string[]) => ({ toolCalls: names.map((toolName) => ({ toolName })) });
+  assert.deepEqual(nextStep([step("web_search", "web_search")], all, true).activeTools, all, "parallel searches are one round");
+  const spent = [step("web_search"), step("read_page", "read_page"), step("web_search")];
+  const r = nextStep(spent, all, true);
+  assert.deepEqual(r.activeTools, ["start_task", "remember"]);
+  assert.match(r.note!, /start_task[\s\S]*found_so_far/);
+  assert.match(nextStep(spent, all, false).note!, /Answer now/, "scheduled runs answer instead of starting a task");
+  assert.deepEqual(nextStep([step("web_search"), step("web_search")], all, true).activeTools, ["read_page", "start_task", "remember"], "reads still allowed");
 });
 
 console.log("browser tasks");

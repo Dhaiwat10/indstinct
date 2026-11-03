@@ -43,7 +43,8 @@ const jidOf = (userId: string) => getUser(userId)?.chat_jid ?? userId;
 
 /** Sends to the user and keeps it in history, so later turns know what the task said. */
 async function say(userId: string, raw: string): Promise<void> {
-  const text = noDashes(raw);
+  // WhatsApp bolds with one asterisk; models often write markdown's two.
+  const text = noDashes(raw).replace(/\*\*(.+?)\*\*/g, "*$1*").replace(/^#{1,6}\s+/gm, "");
   saveMessage(userId, "assistant", text);
   await io?.send(jidOf(userId), text);
 }
@@ -167,7 +168,9 @@ function taskTools(task: Task, session: PageSession, state: Live): ToolSet {
 }
 
 const system = `You are doing a task on websites for the user, in a real browser. Work step by step towards the goal using the details given. The user is on WhatsApp and only sees what you send with tell_user and ask_user, and your final answer.
-Pages are shown as accessibility snapshots: "- role \\"name\\"" lines. Act using a role and name from the snapshot. Use find on long pages, and look when the snapshot doesn't explain the page (seat maps, images, captchas).
+Pages are shown as accessibility snapshots: "- role \\"name\\"" lines. Act using a role and name from the snapshot. Use find on long pages, extract to pull lists of results into rows, and look when the snapshot doesn't explain the page (seat maps, images, captchas).
+The user is in India. If a site shows another country, currency or language, switch it to India, INR and English first (a region or currency setting, or URL parameters such as gl=IN, hl=en, curr=INR).
+Finding or comparing things (cheapest, best, available options): use the first good site that takes the user's exact criteria (dates, places, filters, sort by price when that's the question), then extract the results. For a range of dates, use the site's date grid or price calendar instead of searching each date. Check a second site only if the first failed, blocked you, or its results look wrong. Report the top few with the facts that matter (price, times, stops, key conditions) and the site, and only what you saw on a page, never an estimate. As soon as you have a good answer, finish: the user is waiting. Lookups like this need no approval, since nothing is submitted.
 Rules:
 - Before any click that submits, confirms, declares or pays, call ask_user with kind "approval" and say exactly what you are about to submit: names, flight or booking, seats, every declaration you will tick, any fee. Continue only on a clear yes.
 - Choices the user didn't settle (which passengers, seats, meals, add-ons): ask with kind "choice". Never pick a paid option without approval; prefer "skip" or the free default.
@@ -176,10 +179,13 @@ Rules:
 - Captchas are solved automatically by the browser most of the time; if one stays, use look and, for a text captcha, ask the user (kind "info").
 - When a boarding pass, confirmation or receipt appears, save_file it (pdf, or a screenshot of the QR code).
 - Send a short tell_user note when something meaningful happens (found the booking, submitted), not for every click.
-- Finish with a short plain-text message for the user: what was done, key facts (seats, times, confirmation numbers), and what they need to do next, if anything. If you couldn't finish, say exactly where you stopped and why. Never claim something was done that you didn't see confirmed on the page.`;
+- Messages go to WhatsApp: *bold* with single asterisks, • for bullets, no markdown headers or tables, at most one link and only a short one (the site's home or results page, not a long tracking URL).
+- Finish with a short message for the user: what was done, key facts (seats, times, confirmation numbers), and what they need to do next, if anything. If you couldn't finish, say exactly where you stopped and why. Never claim something was done that you didn't see confirmed on the page.`;
 
 /** The real worker: the browser sub-agent on the heavy model, with no step cap but a runaway guard. */
 async function browserWorker(task: Task, tools: ToolSet, abort: AbortSignal): Promise<string> {
+  const started = Date.now();
+  let nudged = 0;
   const result = await inferenceContext.run({ userId: task.user_id, purpose: "task" }, () =>
     generateText({
       model: models.heavy(),
@@ -188,6 +194,15 @@ async function browserWorker(task: Task, tools: ToolSet, abort: AbortSignal): Pr
       tools,
       stopWhen: stepCountIs(RUNAWAY_STEPS),
       abortSignal: abort,
+      // Not a limit: every 5 minutes the agent hears how long it's been, so it finishes once it has an answer.
+      prepareStep: () => {
+        const minutes = Math.floor((Date.now() - started) / 60_000);
+        if (minutes < 5 || minutes < nudged + 5) return {};
+        nudged = minutes;
+        return {
+          instructions: `${system}\n\nYou've been working on this for ${minutes} minutes and the user is waiting. If you already have a good answer, finish now with it. If you're stuck, say where and why.`,
+        };
+      },
       maxRetries: 0, // capturingFetch retries
       onStepFinish: (step) => {
         for (const c of step.toolCalls) {

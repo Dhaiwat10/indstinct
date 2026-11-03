@@ -34,6 +34,22 @@ export function blockedHost(host: string): boolean {
   return false;
 }
 
+/**
+ * Hosted browsers run outside India (Browserbase has no Indian region), so sites guess the wrong
+ * country, currency and language. Tell every page it's in India: language, timezone, locale and
+ * location. The IP still isn't Indian; only a proxy fixes that.
+ */
+async function localise(context: BrowserContext, page: Page): Promise<void> {
+  try {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Emulation.setTimezoneOverride", { timezoneId: "Asia/Kolkata" }).catch(() => {});
+    await cdp.send("Emulation.setLocaleOverride", { locale: "en-IN" }).catch(() => {});
+    await cdp.send("Emulation.setGeolocationOverride", { latitude: 19.076, longitude: 72.8777, accuracy: 100 }).catch(() => {});
+  } catch {
+    // A page that closed before we got to it.
+  }
+}
+
 async function hostedSession(): Promise<{ id: string; connectUrl: string }> {
   const create = (body: object) =>
     fetch("https://api.browserbase.com/v1/sessions", {
@@ -62,10 +78,22 @@ export async function openPage({ media }: { media: boolean }): Promise<BrowserHa
     const session = await hostedSession();
     const browser = await chromium.connectOverCDP(session.connectUrl);
     context = browser.contexts()[0] ?? (await browser.newContext());
+    await context.setExtraHTTPHeaders({ "Accept-Language": "en-IN,en;q=0.9,hi;q=0.8" });
+    await context.grantPermissions(["geolocation"]).catch(() => {});
+    context.on("page", (p) => void localise(context, p));
+    for (const p of context.pages()) await localise(context, p);
     close = () => browser.close().catch(() => {});
     log.info({ session: session.id }, "browserbase session");
   } else {
-    context = await (await localBrowser()).newContext({ locale: "en-IN", timezoneId: "Asia/Kolkata", viewport: { width: 1280, height: 900 }, acceptDownloads: true });
+    context = await (await localBrowser()).newContext({
+      locale: "en-IN",
+      timezoneId: "Asia/Kolkata",
+      geolocation: { latitude: 19.076, longitude: 72.8777 },
+      permissions: ["geolocation"],
+      extraHTTPHeaders: { "Accept-Language": "en-IN,en;q=0.9,hi;q=0.8" },
+      viewport: { width: 1280, height: 900 },
+      acceptDownloads: true,
+    });
     close = () => context.close().catch(() => {});
   }
   await context.route("**/*", (route) => {
@@ -77,6 +105,7 @@ export async function openPage({ media }: { media: boolean }): Promise<BrowserHa
     return route.continue();
   });
   const page = context.pages()[0] ?? (await context.newPage());
+  if (hosted) await localise(context, page);
   page.setDefaultTimeout(15_000);
   return { page, context, hosted, close };
 }

@@ -48,7 +48,7 @@ for (const [i, text] of prompts.entries()) {
   markOnboarded(user.id);
   trace.length = 0;
   const t0 = Date.now();
-  const r = await runAgent(user, { text, images: [], progress: (e) => console.log(`  +${String(Date.now() - t0).padStart(6)}ms  progress: ${e}`) });
+  const r = await runAgent(user, { text, images: [] });
   const total = Date.now() - t0;
   console.log(`=== "${text}" → ${total} ms, tools: ${r.tools.map((t) => t.name).join(",") || "none"}`);
   for (const rec of trace) console.log(`  +${String(rec.t - t0).padStart(6)}ms  ${String(rec.ms).padStart(6)}ms  ${rec.status}  ${rec.url.padEnd(40)} ${rec.note}`);

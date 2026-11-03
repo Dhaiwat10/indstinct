@@ -18,7 +18,7 @@ const MAX_CHARS = 8000;
 export const readPage = (timezone: string) =>
   tool({
     description:
-      "Read a web page as text: give a URL (usually from web_search results) and get its content. The second step when a search snippet isn't enough. It can't click, log in or fill forms; for pages that need interaction use browse.",
+      "Read one web page as text: give a URL (usually from web_search results) and get its content. The second step of a quick lookup when a snippet isn't enough. It can't click, type or search inside a site; for that, use start_task.",
     inputSchema: z.object({ url: z.string().url() }),
     execute: async ({ url }) => {
       if (!config.TAVILY_API_KEY) return "page reading is not configured";

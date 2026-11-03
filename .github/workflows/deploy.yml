@@ -52,16 +52,18 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # The model may decide to browse; give it the same headless Chromium the droplet has.
-      - run: pnpm exec playwright install --with-deps --only-shell chromium
-      - name: Live chat eval
+      # Both evals stub browser tasks, so no browser is installed here.
+      - name: Live chat and routing evals
         id: eval
         run: |
           if [ -z "$NEAR_AI_API_KEY" ]; then echo "::error::NEAR_AI_API_KEY secret is not set"; exit 1; fi
           set +e
           pnpm --silent eval:chat > eval.txt 2>&1
-          code=$?
+          chat=$?
+          pnpm --silent eval:routing >> eval.txt 2>&1
+          routing=$?
           cat eval.txt
+          code=$(( chat != 0 || routing != 0 ))
           echo "code=$code" >> "$GITHUB_OUTPUT"
           exit 0
       - name: Post results on the PR
@@ -72,9 +74,9 @@ jobs:
           CODE: ${{ steps.eval.outputs.code }}
         run: |
           {
-            if [ "$CODE" = "0" ]; then echo "### ✅ Live chat eval passed"; else echo "### ⚠️ Live chat eval: some hard checks failed"; fi
+            if [ "$CODE" = "0" ]; then echo "### ✅ Live evals passed"; else echo "### ⚠️ Live evals: a hard check failed or routing fell below 85%"; fi
             echo
-            echo "Real conversations through the agent on NEAR AI. Model replies vary run to run, so read failures before deciding; re-run the job if one looks like a fluke."
+            echo "Real conversations through the agent on NEAR AI, then the routing eval (answer, quick lookup or browser task for 40 varied requests). Model replies vary run to run, so read failures before deciding; re-run the job if one looks like a fluke."
             echo
             echo '```'
             tail -c 60000 eval.txt

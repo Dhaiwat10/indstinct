@@ -24,7 +24,7 @@ function published(r: TavilyResult, timezone: string): string {
 export const webSearch = (timezone: string) =>
   tool({
     description:
-      "Search the web. The first step for anything live or recent: news, prices, scores, weather, schedules, what happened. Returns dated results with snippets plus a short summary. Write specific queries (place, names, today's date for anything live). If a snippet isn't enough, read_page the best result.",
+      "Quick lookup: search the web for a fact one query can find (news, weather, who holds a post, scores, hours). Returns dated results with snippets plus a short summary. Write specific queries (place, names, today's date for anything live). If a snippet isn't enough, read_page the best result. For anything that means working a website (entering dates or a PNR, comparing many live prices or options), use start_task instead.",
     inputSchema: z.object({
       query: z.string().min(2),
       recency: z

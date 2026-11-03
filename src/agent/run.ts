@@ -6,9 +6,9 @@ import { log } from "../log.js";
 import { models } from "../nearai/client.js";
 import { inferenceContext } from "../nearai/capture.js";
 import { extractMemories } from "./memory-extract.js";
+import { nextStep } from "./lookup.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { noDashes } from "../text.js";
-import { browse } from "./tools/browse.js";
 import { emailTools, type OutFile } from "./tools/email.js";
 import { forget } from "./tools/forget.js";
 import { remember } from "./tools/remember.js";
@@ -20,17 +20,12 @@ import { taskTools } from "./tools/tasks.js";
 import { webSearch } from "./tools/web-search.js";
 import { gmailFor } from "../gmail/client.js";
 
-/** Something a tool started that the user should hear about before the reply arrives. */
-export type ProgressEvent = "browsing";
-
 export type Turn = {
   text: string;
   images: { data: Buffer; mediaType: string }[];
   waMessageId?: string;
   /** Set when a recurring task fires: `text` is its prompt, and nobody is waiting on a chat reply. */
   scheduled?: { id: number; description: string };
-  /** Called when a long job starts, so the channel can tell the user instead of leaving them on "typing…". */
-  progress?: (event: ProgressEvent) => void;
 };
 
 const linkInferences = db.prepare(
@@ -141,7 +136,6 @@ export async function runAgent(user: User, turn: Turn): Promise<AgentResult> {
     list_todos: listTodos(user),
     web_search: webSearch(user.timezone),
     read_page: readPage(user.timezone),
-    browse: browse(turn.progress),
     // A scheduled run can't schedule more runs, or start browser tasks nobody is there to approve.
     ...(!turn.scheduled && {
       ...taskTools(user, () => (secret = true)),
@@ -166,6 +160,11 @@ export async function runAgent(user: User, turn: Turn): Promise<AgentResult> {
       messages,
       tools: timed(toolset, user.id),
       stopWhen: stepCountIs(8),
+      // Past the quick-lookup allowance, search tools go away: answer, or hand off to a task.
+      prepareStep: ({ steps }) => {
+        const { activeTools, note } = nextStep(steps, Object.keys(toolset), !turn.scheduled);
+        return { activeTools: activeTools as (keyof typeof toolset)[], ...(note && { instructions: `${system}\n\n${note}` }) };
+      },
       maxRetries: 0, // capturingFetch retries
       // A step is one model call plus the tools it asked for; "tool call" lines give the split.
       onStepFinish: (step) => {

@@ -1,4 +1,4 @@
-import { generateText, tool } from "ai";
+import { generateText, Output, tool } from "ai";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { models } from "../nearai/client.js";
@@ -150,6 +150,31 @@ export function pageTools(session: PageSession) {
         const words = text.toLowerCase().split(/\s+/);
         const hits = tree.split("\n").filter((l) => words.every((w) => l.toLowerCase().includes(w)));
         return hits.length ? hits.slice(0, 40).join("\n") : `no lines mention "${text}"`;
+      },
+    }),
+    extract: tool({
+      description:
+        "Pull a list of items off the current page as structured rows, e.g. every flight result with airline, times, stops and price, or every slot with date and time. Faster and more reliable than reading the snapshot or a screenshot when you need to compare many items. Only rows actually on the page are returned.",
+      inputSchema: z.object({
+        what: z.string().describe('the items, e.g. "flight results"'),
+        fields: z.array(z.string()).min(1).max(10).describe('e.g. ["airline", "departure", "arrival", "duration", "stops", "price"]'),
+      }),
+      execute: async ({ what, fields }) => {
+        const page = await session.page();
+        await page.waitForLoadState("domcontentloaded").catch(() => {});
+        const text = (await page.locator("body").innerText({ timeout: 10_000 }).catch(() => "")).replace(/\n{3,}/g, "\n\n").slice(0, 25_000);
+        if (!text.trim()) return "the page has no readable text yet; wait and read again";
+        const row = z.object(Object.fromEntries(fields.map((f) => [f, z.string().describe(`${f}, exactly as shown; empty if not shown`)])));
+        const { output } = await generateText({
+          model: models.extract(),
+          system: "You extract data from web page text. Return only items that appear in the text, with values copied exactly as shown. Never invent or estimate values.",
+          prompt: `Page: ${page.url()}\nExtract every one of these items: ${what}.\n\n${text}`,
+          output: Output.object({ schema: z.object({ items: z.array(row) }) }),
+          maxRetries: 0,
+        });
+        const items = output?.items ?? [];
+        if (!items.length) return `no ${what} found in the page text. If they're shown as images or haven't loaded, read again or use look.`;
+        return `${items.length} ${what} from ${page.url()}:\n${items.map((r, i) => `${i + 1}. ${fields.map((f) => `${f}: ${(r as Record<string, string>)[f] || "-"}`).join(" | ")}`).join("\n")}`;
       },
     }),
     look: tool({

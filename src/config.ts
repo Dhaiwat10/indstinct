@@ -19,7 +19,7 @@ const schema = z.object({
   MODEL_EXTRACT: z.string().default("Qwen/Qwen3.6-35B-A3B-FP8"),
   MODEL_WHISPER: z.string().default("openai/whisper-large-v3"),
   TAVILY_API_KEY: z.string().optional(),
-  // Hosted browser for browse and browser tasks; without it a local headless Chromium is used.
+  // Hosted browser for browser tasks; without it a local headless Chromium is used.
   BROWSERBASE_API_KEY: z.string().optional(),
   // Google OAuth "Web application" client; Gmail features are off until both are set.
   GOOGLE_CLIENT_ID: z.string().optional(),

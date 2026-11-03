@@ -90,6 +90,23 @@ CREATE TABLE IF NOT EXISTS gmail_accounts (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
+-- Browser tasks: multi-step jobs on websites that run in the background and can stop to ask
+-- the user something. Holds as little as possible: details are cleared when a task ends,
+-- step_log is one-line action summaries with no page text, files are never stored.
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  status TEXT NOT NULL CHECK (status IN ('running','waiting','done','failed','cancelled','interrupted')),
+  goal TEXT NOT NULL,
+  details TEXT,                     -- what the site will need; cleared when the task ends
+  question TEXT,                    -- JSON {kind, text, options?} while status = 'waiting'
+  step_log TEXT NOT NULL DEFAULT '',
+  result TEXT,                      -- the final message to the user
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS tasks_user ON tasks(user_id, status);
+
 -- Email the agent has drafted but not sent. Sending needs a later turn than drafting.
 CREATE TABLE IF NOT EXISTS email_drafts (
   id INTEGER PRIMARY KEY,

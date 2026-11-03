@@ -9,6 +9,7 @@ import { startHttp } from "./http/server.js";
 import { log } from "./log.js";
 import { InferenceUnavailable } from "./nearai/capture.js";
 import { startScheduler } from "./scheduler/tick.js";
+import { startTaskRunner } from "./tasks/runner.js";
 import { onInbound, type Inbound } from "./wa/inbound.js";
 import { sendFile, sendText, typing } from "./wa/outbound.js";
 import { connect } from "./wa/socket.js";
@@ -107,6 +108,16 @@ const send = async (jid: string, text: string) => {
 };
 const connected = () => !!current;
 startScheduler(send, connected);
+startTaskRunner(
+  {
+    send,
+    sendFile: async (jid, f) => {
+      if (!current) throw new Error("WhatsApp not connected");
+      await sendFile(current, jid, f.data, f.mimeType, f.name);
+    },
+  },
+  connected,
+);
 // Always up, for /health; the Gmail routes just report "link expired" until Gmail is configured.
 startHttp(send);
 if (config.GMAIL_ENABLED) startInboxWatch(send, connected);

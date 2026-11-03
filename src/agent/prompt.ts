@@ -2,6 +2,7 @@ import { config } from "../config.js";
 import { getGmailAccount } from "../db/gmail.js";
 import { CATEGORIES, listMemories } from "../db/memories.js";
 import { activeSchedules } from "../db/schedules.js";
+import { openTask } from "../db/tasks.js";
 import { openTodos } from "../db/todos.js";
 import type { User } from "../db/users.js";
 import { formatWhen } from "../scheduler/time.js";
@@ -24,8 +25,9 @@ To cancel or complete something, use the #id from the lists below.
 Live information: anything that may have changed since your training (news, prices, scores, weather, schedules, who won, what's open) → look it up, never answer from memory. Climb one rung at a time:
 1. \`web_search\` with a specific query: place, names, and today's date for anything live; news: true and recency: "day" for headlines or today's events. Results carry their date: trust today's, and say how old older ones are. For a broad "what's happening" question, search two or three specific angles in the same step, then answer from those results (at most 5 bullets, one line each) rather than searching again.
 2. If a snippet isn't enough, \`read_page\` the best result.
-3. \`browse\` only when a page needs interaction (searching inside a site, forms, buttons, multi-step tasks, e.g. PNR status on confirmtkt.com/pnr-status/<PNR>) or when search and read_page both failed. Never call it in the same step as \`web_search\`; the user is told automatically that it may take a while.
-Answer with the facts, then the source as a bare link (one or two at most).`;
+3. \`browse\` only when a lookup needs interaction (searching inside a site, a lookup form, e.g. PNR status on confirmtkt.com/pnr-status/<PNR>) or when search and read_page both failed. Never call it in the same step as \`web_search\`; the user is told automatically that it may take a while.
+Answer with the facts, then the source as a bare link (one or two at most).
+Doing things on websites (web check-in, rescheduling or cancelling an appointment, filling in a form): yes, you can, with \`start_task\`. It runs in a real browser in the background, asks the user before anything is submitted, and sends files like boarding passes at the end. Most web check-ins need only the booking reference and surname, no account: don't refuse them. Collect what's missing in one short message (for check-in: airline, booking reference, surname, which passengers; seat preference only if they care), or find it in their Gmail if connected, then start it. Never start a task that needs their password, a card or a payment: say so plainly.`;
 
 const images = `Images: when the user sends a photo, read it carefully (amounts, dates, names, PNR/booking numbers) and do the useful thing: a bill or receipt → total, merchant, date, and \`remember\` it as an expense if they want it tracked; a ticket → journey details and \`remember\` the trip; anything else → answer their caption. With no caption, briefly say what it is and offer the obvious next step.`;
 
@@ -99,6 +101,16 @@ function memorySection(userId: string): string {
   return `What you know about the user:\n${groups.join("\n")}`;
 }
 
+/** The open browser task, and the question it's waiting on: the user's next message may answer it. */
+function task(user: User): string {
+  const t = openTask(user.id);
+  if (!t) return "";
+  if (t.status === "running") return `Open task #${t.id} (${t.goal}) is running in the background. If they ask how it's going, say it's in progress; if they want it stopped, \`cancel_task\`.`;
+  const q = t.question!;
+  return `Open task #${t.id} (${t.goal}) is waiting on the user. It asked (${q.kind}): "${q.text}"${q.options?.length ? ` Options: ${q.options.map((o, i) => `${i + 1}) ${o}`).join(" ")}` : ""}
+If their message answers it ("yes", "2", a seat, a code), call \`task_reply\` with their answer and reply in one short line. If it's about something else, answer that normally and leave the task waiting. If they want to stop, \`cancel_task\`.${q.kind === "approval" ? " Pass on a yes only if they clearly approved; anything unclear, ask them." : ""}`;
+}
+
 export function buildSystemPrompt(user: User): string {
   const profile = [
     user.name && `Name: ${user.name}${user.onboarded_at ? "" : " (from WhatsApp profile, may be a nickname)"}`,
@@ -118,6 +130,7 @@ export function buildSystemPrompt(user: User): string {
     email(user),
     images,
     onboarding(user),
+    task(user),
     `Now: ${now(user.timezone)}\n${relativeDays(user.timezone)}`,
     `User profile:\n${profile}`,
     memorySection(user.id),

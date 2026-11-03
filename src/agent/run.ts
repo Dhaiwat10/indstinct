@@ -1,6 +1,6 @@
 import { generateText, stepCountIs, type ModelMessage, type StepResult, type ToolSet, type UserContent } from "ai";
 import { db } from "../db/index.js";
-import { history, pruneHistory, saveMessage, type StoredMessage, type ToolTrace } from "../db/messages.js";
+import { history, pruneHistory, rewriteMessage, saveMessage, type StoredMessage, type ToolTrace } from "../db/messages.js";
 import { markOnboarded, type User } from "../db/users.js";
 import { log } from "../log.js";
 import { models } from "../nearai/client.js";
@@ -16,6 +16,7 @@ import { cancelSchedule, listSchedules, scheduleRecurring, setReminder } from ".
 import { addTodo, completeTodo, listTodos } from "./tools/todos.js";
 import { updateProfile } from "./tools/update-profile.js";
 import { readPage } from "./tools/read-page.js";
+import { taskTools } from "./tools/tasks.js";
 import { webSearch } from "./tools/web-search.js";
 import { gmailFor } from "../gmail/client.js";
 
@@ -123,7 +124,9 @@ export async function runAgent(user: User, turn: Turn): Promise<AgentResult> {
     ? [...turn.images.map((i) => ({ type: "file" as const, data: i.data, mediaType: i.mediaType })), { type: "text" as const, text: turn.text || "(no caption)" }]
     : turn.text;
   messages.push({ role: "user", content });
-  saveMessage(user.id, "user", stored(turn), turn.waMessageId);
+  const userMessageId = saveMessage(user.id, "user", stored(turn), turn.waMessageId);
+  // Set when this message was a one-time code for a browser task: it must not stay in history.
+  let secret = false;
 
   const turnStartedAt = Date.now();
   const files: OutFile[] = [];
@@ -139,8 +142,9 @@ export async function runAgent(user: User, turn: Turn): Promise<AgentResult> {
     web_search: webSearch(user.timezone),
     read_page: readPage(user.timezone),
     browse: browse(turn.progress),
-    // A scheduled run can't schedule more runs.
+    // A scheduled run can't schedule more runs, or start browser tasks nobody is there to approve.
     ...(!turn.scheduled && {
+      ...taskTools(user, () => (secret = true)),
       set_reminder: setReminder(user),
       schedule_recurring: scheduleRecurring(user),
       list_schedules: listSchedules(user),
@@ -184,7 +188,11 @@ export async function runAgent(user: User, turn: Turn): Promise<AgentResult> {
 
   // Models often write part of the reply alongside a tool call; result.text only has the last step.
   const reply = result.steps.map((s) => clean(s.text)).filter(Boolean).join("\n\n") || "Done ✅";
-  const tools = traces(result.steps);
+  let tools = traces(result.steps);
+  if (secret) {
+    rewriteMessage(userMessageId, "[sent a one-time code for a browser task]");
+    tools = tools.map((t) => (t.name === "task_reply" ? { ...t, input: { answer: "[one-time code]" } } : t));
+  }
   const replyId = saveMessage(user.id, "assistant", reply, undefined, tools);
   linkInferences.run(replyId, user.id);
   pruneHistory(user.id);
@@ -196,7 +204,7 @@ export async function runAgent(user: User, turn: Turn): Promise<AgentResult> {
   );
 
   // Short messages ("ok", "thanks") never carry new facts; skip the extra call.
-  if (!turn.scheduled && stored(turn).length >= 15)
+  if (!turn.scheduled && !secret && stored(turn).length >= 15)
     void extractMemories(user, stored(turn), reply, replyId).catch((err) => log.warn({ err, user: user.id }, "memory extraction failed"));
   return { reply, tools, files };
 }

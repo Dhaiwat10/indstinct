@@ -38,6 +38,7 @@ export const privacyPage = shell(
 <li>Your WhatsApp number and profile name.</li>
 <li>Your most recent 30 messages with the assistant, so it can follow the conversation. Older messages are deleted automatically.</li>
 <li>Things you ask it to remember or that it notes from conversation (for example a birthday), your open reminders, recurring tasks and to-dos, and the name, city, language and timezone you give it. A memory you forget, a to-do you finish and a reminder that has fired or been cancelled are deleted, not hidden.</li>
+<li>For a task the assistant does on a website for you (for example a web check-in): its goal, a short log of its steps without page content, and the final message it sent you. The details it needed, such as a booking reference, are deleted when the task ends. Files it fetches for you, like boarding passes, are sent to you and never stored. A one-time code you send for a task is not kept in the conversation.</li>
 <li>For each AI inference, a fingerprint (SHA-256 hash) of the request and response, so replies can be cryptographically verified with <code>/verify</code>. The request and response themselves are not kept.</li>
 </ul>
 <p>This is stored in a database on our server and used only to provide the assistant to you. Our logs record timings and counts, never what you or the assistant wrote. Deleted data is overwritten on disk.</p>
@@ -58,6 +59,7 @@ export const privacyPage = shell(
 <li><strong>NEAR AI</strong> runs the language models that read your messages, and email you ask about, to write replies. This happens inside a trusted execution environment, so NEAR AI cannot read the content.</li>
 <li><strong>Google</strong>, when you connect Gmail, to perform the actions you ask for.</li>
 <li><strong>Tavily</strong> receives web search queries the assistant makes to answer questions about live information.</li>
+<li><strong>Browserbase</strong> runs the web browser the assistant uses to look things up on websites and to do tasks for you, such as a web check-in. It sees the pages the assistant opens, including what the assistant types into them for you, such as a booking reference, your name or a one-time code.</li>
 <li><strong>WhatsApp</strong> carries the messages between you and the assistant.</li>
 </ul>
 <p>We do not share your data with anyone else.</p>

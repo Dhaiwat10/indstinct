@@ -25,7 +25,7 @@ export async function onGmailConnected(account: GmailAccount, send: Send): Promi
   const note = CONNECTED_NOTE(account.email);
   saveMessage(user.id, "assistant", note);
   await send(user.chat_jid ?? user.id, note).catch((err) => log.warn({ err, user: user.id }, "could not send gmail connected note"));
-  log.info({ user: user.id, email: account.email }, "gmail connected");
+  log.info({ user: user.id }, "gmail connected");
 }
 
 const scrubTraces = db.prepare<[string], { id: number; tool_calls: string }>(
@@ -57,6 +57,6 @@ export async function disconnectGmail(userId: string): Promise<{ account: GmailA
       setTraces.run(kept.length ? JSON.stringify(kept) : null, row.id);
     }
   })();
-  log.info({ user: userId, email: account.email, cancelled }, "gmail disconnected");
+  log.info({ user: userId, cancelled: cancelled.length }, "gmail disconnected");
   return { account, cancelled };
 }

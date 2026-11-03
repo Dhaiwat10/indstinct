@@ -1,6 +1,6 @@
 import { generateText, stepCountIs, type ModelMessage, type StepResult, type ToolSet, type UserContent } from "ai";
 import { db } from "../db/index.js";
-import { history, saveMessage, type StoredMessage, type ToolTrace } from "../db/messages.js";
+import { history, pruneHistory, saveMessage, type StoredMessage, type ToolTrace } from "../db/messages.js";
 import { markOnboarded, type User } from "../db/users.js";
 import { log } from "../log.js";
 import { models } from "../nearai/client.js";
@@ -187,6 +187,7 @@ export async function runAgent(user: User, turn: Turn): Promise<AgentResult> {
   const tools = traces(result.steps);
   const replyId = saveMessage(user.id, "assistant", reply, undefined, tools);
   linkInferences.run(replyId, user.id);
+  pruneHistory(user.id);
   markOnboarded(user.id);
 
   log.info(

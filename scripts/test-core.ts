@@ -252,14 +252,71 @@ await test("/forget removes only that memory, and only for its owner", async () 
   assert.deepEqual(listMemories(u.id).map((m) => m.content), ["Lives in Bengaluru"]);
 });
 
+console.log("keeping less");
+const rows = (table: string, userId: string) =>
+  (db.prepare(`SELECT count(*) n FROM ${table} WHERE user_id = ?`).get(userId) as { n: number }).n;
+await test("the inference log keeps hashes only, never the prompt or reply", () => {
+  const cols = (db.prepare("PRAGMA table_info(inference_log)").all() as { name: string }[]).map((c) => c.name);
+  assert.ok(cols.includes("request_sha256") && cols.includes("response_sha256"));
+  assert.ok(!cols.some((c) => c.endsWith("_raw")), `raw columns still there: ${cols.join(",")}`);
+});
+await test("only the newest 30 messages are kept, with the model calls behind them", async () => {
+  const u = freshUser();
+  const { saveMessage, pruneHistory } = await import("../src/db/messages.js");
+  const ids = Array.from({ length: 40 }, (_, i) => saveMessage(u.id, i % 2 ? "assistant" : "user", `m${i}`));
+  const log = db.prepare("INSERT INTO inference_log (user_id, message_id, model, request_sha256, response_sha256) VALUES (?, ?, 'm', 'a', 'b')");
+  log.run(u.id, ids[1]); // behind an old reply: goes
+  log.run(u.id, ids[39]); // behind the latest reply: stays, so /verify still works
+  pruneHistory(u.id);
+  assert.equal(rows("messages", u.id), 30);
+  assert.equal(history(u.id)[0]!.content, "m10");
+  assert.equal(rows("inference_log", u.id), 1);
+});
+await test("forgetting, finishing and cancelling delete the row instead of hiding it", async () => {
+  const u = freshUser();
+  const m = rememberRow(u.id, "Likes chai", "preference");
+  await handleCommand(u, `/forget ${typeof m === "number" ? m : (m as { id: number }).id}`);
+  const t = addTodoRow(u.id, "buy milk");
+  await handleCommand(u, `/done ${t}`);
+  await exec(setReminder(u), { at_iso: istIso(1, 9), text: "call mom" });
+  await handleCommand(u, `/cancel ${activeSchedules(u.id)[0]!.id}`);
+  assert.equal(rows("memories", u.id), 0);
+  assert.equal(rows("todos", u.id), 0);
+  assert.equal(rows("schedules", u.id), 0);
+});
+await test("/delete asks first; /delete everything removes every row the user owns", async () => {
+  const u = freshUser();
+  const { saveMessage } = await import("../src/db/messages.js");
+  saveMessage(u.id, "user", "hello");
+  rememberRow(u.id, "Name is Asha", "fact");
+  addTodoRow(u.id, "buy milk");
+  await exec(setReminder(u), { at_iso: istIso(1, 9), text: "call mom" });
+  assert.match((await handleCommand(u, "/delete")) as string, /\/delete everything/);
+  assert.equal(rows("memories", u.id), 1, "a bare /delete must not delete anything");
+  await handleCommand(u, "/delete everything");
+  for (const t of ["messages", "memories", "todos", "schedules", "inference_log"]) assert.equal(rows(t, u.id), 0, t);
+  assert.equal(db.prepare("SELECT count(*) n FROM users WHERE id = ?").get(u.id)!.n, 0);
+});
+await test("logged errors drop the prompt and response the AI SDK attaches", async () => {
+  const lines: string[] = [];
+  const { default: pino } = await import("pino");
+  const { log } = await import("../src/log.js");
+  const err = Object.assign(new Error("Bad Request"), { statusCode: 400, requestBodyValues: { messages: [{ content: "my PNR is 4512345678" }] }, responseBody: "secret reply" });
+  const probe = pino({ serializers: { err: (log as unknown as { [k: symbol]: { err: (e: unknown) => unknown } })[pino.symbols.serializersSym].err } }, { write: (l: string) => void lines.push(l) });
+  probe.error({ err: new Error("turn failed", { cause: err }) }, "turn failed");
+  assert.doesNotMatch(lines.join(""), /4512345678|secret reply/);
+  assert.match(lines.join(""), /Bad Request/);
+});
+
 console.log("commands");
-await test("/reset hides history but keeps memories", async () => {
+await test("/reset deletes history from the database but keeps memories", async () => {
   const u = freshUser();
   const { saveMessage } = await import("../src/db/messages.js");
   saveMessage(u.id, "user", "hello");
   rememberRow(u.id, "Name is Asha", "fact");
   await handleCommand(u, "/reset");
   assert.equal(history(u.id).length, 0);
+  assert.equal(rows("messages", u.id), 0);
   assert.equal(listMemories(u.id).length, 1);
 });
 await test("normal text isn't a command; unknown commands fall through to the agent", async () => {

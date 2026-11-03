@@ -90,7 +90,11 @@ const insertDraft = db.prepare(`
 `);
 const getDraft = db.prepare<[number, string], EmailDraft>("SELECT * FROM email_drafts WHERE id = ? AND user_id = ?");
 const updateDraft = db.prepare("UPDATE email_drafts SET to_addr = ?, subject = ?, body = ?, created_ms = ? WHERE id = ?");
-const markSent = db.prepare("UPDATE email_drafts SET sent_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?");
+// Once sent, the mail lives in the user's Gmail; only the row stays, so the send guard still works.
+const markSent = db.prepare(
+  "UPDATE email_drafts SET sent_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), to_addr = '', subject = '', body = '' WHERE id = ?",
+);
+db.exec("UPDATE email_drafts SET to_addr = '', subject = '', body = '' WHERE sent_at IS NOT NULL AND body != ''");
 const deleteDrafts = db.prepare("DELETE FROM email_drafts WHERE user_id = ?");
 
 export function addDraft(d: Omit<EmailDraft, "id" | "sent_at">): number {

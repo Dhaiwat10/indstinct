@@ -35,17 +35,19 @@ export const privacyPage = shell(
 
 <h2>What indstinct stores</h2>
 <ul>
-<li>Your WhatsApp number and profile name, and the messages you exchange with the assistant.</li>
-<li>Things you ask it to remember or that it notes from conversation (for example a birthday), your reminders, recurring tasks and to-dos, and the name, city, language and timezone you give it.</li>
-<li>Records of each AI inference (the request and response), kept so that replies can be cryptographically verified with <code>/verify</code>.</li>
+<li>Your WhatsApp number and profile name.</li>
+<li>Your most recent 30 messages with the assistant, so it can follow the conversation. Older messages are deleted automatically.</li>
+<li>Things you ask it to remember or that it notes from conversation (for example a birthday), your open reminders, recurring tasks and to-dos, and the name, city, language and timezone you give it. A memory you forget, a to-do you finish and a reminder that has fired or been cancelled are deleted, not hidden.</li>
+<li>For each AI inference, a fingerprint (SHA-256 hash) of the request and response, so replies can be cryptographically verified with <code>/verify</code>. The request and response themselves are not kept.</li>
 </ul>
-<p>This is stored in a database on our server and used only to provide the assistant to you.</p>
+<p>This is stored in a database on our server and used only to provide the assistant to you. Our logs record timings and counts, never what you or the assistant wrote. Deleted data is overwritten on disk.</p>
+<p>To be clear about the limits: while the model calls run in a trusted execution environment, our server is an ordinary one, so whoever runs it has technical access to the data above. We keep as little as possible for that reason.</p>
 
 <h2>Gmail data</h2>
 <p>If you connect Gmail, indstinct asks Google for the <code>gmail.modify</code> permission, which lets it read, search, label, draft and send email. It uses that access only to do what you ask in the chat, for example "what did Riya say about the interview?", "draft a reply", "unsubscribe me from this list", or "send me that attachment", and, only if you turn it on, to flag important new mail.</p>
 <ul>
 <li><strong>Read live, not copied.</strong> Email is fetched from Google when needed. indstinct does not keep a copy of your mailbox.</li>
-<li><strong>What is kept:</strong> your Google access tokens; the drafts the assistant writes (recipient, subject, body); short excerpts of email that appeared in your conversation with the assistant, so it can follow up in context; and, if you enabled alerts, the one-line notes it sent you about new mail.</li>
+<li><strong>What is kept:</strong> your Google access tokens; the drafts the assistant writes (recipient, subject, body) until they are sent, after which their text is deleted; short excerpts of email that appeared in your conversation with the assistant, so it can follow up in context; and, if you enabled alerts, the one-line notes it sent you about new mail.</li>
 <li><strong>Nothing is sent without you.</strong> Every email is drafted first and shown to you in WhatsApp. It is only sent after you approve it in a later message.</li>
 <li><strong>Disconnecting deletes it.</strong> <code>/gmail disconnect</code> revokes indstinct's access at Google and deletes the tokens, drafts, email excerpts, alert notes and any recurring task that reads mail.</li>
 </ul>
@@ -53,7 +55,7 @@ export const privacyPage = shell(
 
 <h2>Who else processes your data</h2>
 <ul>
-<li><strong>NEAR AI</strong> runs the language models that read your messages, and email you ask about, to write replies. This happens inside a trusted execution environment, so the content is not readable in plaintext by NEAR AI or by us.</li>
+<li><strong>NEAR AI</strong> runs the language models that read your messages, and email you ask about, to write replies. This happens inside a trusted execution environment, so NEAR AI cannot read the content.</li>
 <li><strong>Google</strong>, when you connect Gmail, to perform the actions you ask for.</li>
 <li><strong>Tavily</strong> receives web search queries the assistant makes to answer questions about live information.</li>
 <li><strong>WhatsApp</strong> carries the messages between you and the assistant.</li>
@@ -61,7 +63,7 @@ export const privacyPage = shell(
 <p>We do not share your data with anyone else.</p>
 
 <h2>Deleting your data</h2>
-<p>In the chat: <code>/forget</code> removes a memory, <code>/reset</code> clears the conversation history, and <code>/gmail disconnect</code> removes everything related to Gmail. To have all of your data deleted, email <a href="mailto:${CONTACT}">${CONTACT}</a> from any address and include your WhatsApp number; we will delete it within 7 days.</p>
+<p>In the chat: <code>/forget</code> deletes a memory, <code>/reset</code> deletes the conversation history, <code>/gmail disconnect</code> removes everything related to Gmail, and <code>/delete everything</code> deletes all of your data at once, including your Gmail link. You can also email <a href="mailto:${CONTACT}">${CONTACT}</a> from any address and include your WhatsApp number; we will delete it within 7 days.</p>
 
 <h2>Contact</h2>
 <p><a href="mailto:${CONTACT}">${CONTACT}</a></p>`,

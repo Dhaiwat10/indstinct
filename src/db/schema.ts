@@ -68,10 +68,8 @@ CREATE TABLE IF NOT EXISTS inference_log (
   message_id INTEGER,
   completion_id TEXT,
   model TEXT,
-  request_sha256 TEXT NOT NULL,
-  response_sha256 TEXT NOT NULL,
-  request_raw BLOB NOT NULL,        -- exact bytes sent; NEAR AI signs their hash
-  response_raw BLOB NOT NULL,       -- exact bytes received
+  request_sha256 TEXT NOT NULL,     -- of the exact bytes sent; NEAR AI signs both hashes
+  response_sha256 TEXT NOT NULL,    -- of the exact bytes received. The bytes themselves are never kept.
   signature TEXT,                   -- JSON, cached /v1/signature result
   verified_at TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -110,4 +108,11 @@ export const addedColumns: [string, string, string][] = [
   ["users", "chat_jid", "TEXT"],
   // 'agent' for calls that write the reply, 'extract' for background memory extraction.
   ["inference_log", "purpose", "TEXT NOT NULL DEFAULT 'agent'"],
+];
+
+/** Columns removed after shipping: [table, column]. Dropping them also wipes what they held. */
+export const droppedColumns: [string, string][] = [
+  // Full prompts and replies; /verify only needs their hashes.
+  ["inference_log", "request_raw"],
+  ["inference_log", "response_raw"],
 ];

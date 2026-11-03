@@ -20,6 +20,9 @@ const { listMemories } = await import("../src/db/memories.js");
 const { activeSchedules } = await import("../src/db/schedules.js");
 const { openTodos } = await import("../src/db/todos.js");
 const { getUser, markOnboarded, upsertUser } = await import("../src/db/users.js");
+const { startTaskRunner } = await import("../src/tasks/runner.js");
+// A conversation may start a browser task; finish it at once instead of opening a browser.
+startTaskRunner({ send: async () => {}, sendFile: async () => {} }, () => true, async () => "done");
 
 type User = NonNullable<ReturnType<typeof getUser>>;
 type Ctx = { reply: string; tools: { name: string; input: any }[]; user: User };

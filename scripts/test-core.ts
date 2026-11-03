@@ -37,6 +37,11 @@ const { runDue } = await import("../src/scheduler/tick.js");
 const { setReminder, scheduleRecurring, cancelSchedule } = await import("../src/agent/tools/schedule.js");
 const { addTodo, completeTodo } = await import("../src/agent/tools/todos.js");
 const { handleCommand } = await import("../src/commands.js");
+const tasks = await import("../src/tasks/runner.js");
+const { getTask, openTask } = await import("../src/db/tasks.js");
+const { taskTools } = await import("../src/agent/tools/tasks.js");
+const { nextStep } = await import("../src/agent/lookup.js");
+const { buildSystemPrompt } = await import("../src/agent/prompt.js");
 
 let passed = 0;
 const test = async (name: string, fn: () => Promise<void> | void) => {
@@ -252,6 +257,103 @@ await test("/forget removes only that memory, and only for its owner", async () 
   assert.deepEqual(listMemories(u.id).map((m) => m.content), ["Lives in Bengaluru"]);
 });
 
+console.log("quick-lookup allowance");
+await test("two search rounds and two page reads, then the search tools go and the model is told to hand off", () => {
+  const all = ["web_search", "read_page", "start_task", "remember"];
+  const step = (...names: string[]) => ({ toolCalls: names.map((toolName) => ({ toolName })) });
+  assert.deepEqual(nextStep([step("web_search", "web_search")], all, true).activeTools, all, "parallel searches are one round");
+  const spent = [step("web_search"), step("read_page", "read_page"), step("web_search")];
+  const r = nextStep(spent, all, true);
+  assert.deepEqual(r.activeTools, ["start_task", "remember"]);
+  assert.match(r.note!, /start_task[\s\S]*found_so_far/);
+  assert.match(nextStep(spent, all, false).note!, /Answer now/, "scheduled runs answer instead of starting a task");
+  assert.deepEqual(nextStep([step("web_search"), step("web_search")], all, true).activeTools, ["read_page", "start_task", "remember"], "reads still allowed");
+});
+
+console.log("browser tasks");
+// The browser is replaced by a script: each test says what the "sub-agent" does with its tools.
+type Script = (tools: Record<string, { execute?: (i: any, o: any) => Promise<any> }>) => Promise<string>;
+let script: Script = async () => "done";
+const files: string[] = [];
+tasks.startTaskRunner(
+  { send, sendFile: async (_jid, f) => void files.push(f.name) },
+  () => true,
+  (_task, tools, _abort) => script(tools as any),
+);
+const call = (tools: any, name: string, input: unknown) => tools[name].execute(input, { toolCallId: "t", messages: [] });
+const until = async (check: () => boolean) => {
+  for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 10));
+  assert.ok(check(), "timed out waiting");
+};
+await test("a task asks for approval, waits, carries on after the user's yes, and reports back", async () => {
+  const u = freshUser();
+  let heard = "";
+  script = async (tools) => {
+    await call(tools, "tell_user", { text: "Found the booking, 2 passengers" });
+    heard = await call(tools, "ask_user", { kind: "approval", text: "Submit check-in for both, seats 12A and 13A?" });
+    return "Checked in. Seats 12A, 13A.";
+  };
+  sent.length = 0;
+  const started = await exec(taskTools(u, () => {}).start_task, { goal: "Web check-in for 6E 123", details: "PNR ABC123, surname Shah" });
+  assert.match(started, /task #\d+ started/);
+  await until(() => openTask(u.id)?.status === "waiting");
+  assert.match(buildSystemPrompt(u), /waiting on the user[\s\S]*Submit check-in/);
+  assert.match(sent.map((m) => m.text).join("\n"), /Found the booking[\s\S]*✋ Submit check-in/);
+  assert.match(await exec(taskTools(u, () => {}).task_reply, { answer: "yes" }), /passed to task/);
+  await until(() => !openTask(u.id));
+  assert.equal(heard, "The user answered: yes");
+  const t = getTask(Number(started.match(/#(\d+)/)![1]))!;
+  assert.equal(t.status, "done");
+  assert.equal(t.details, null, "details are cleared when a task ends");
+  assert.match(sent.at(-1)!.text, /Checked in/);
+  assert.match(history(u.id).map((m) => m.content).join("\n"), /Submit check-in[\s\S]*Checked in/);
+});
+await test("one task per user; a second start is refused while the first is open", async () => {
+  const u = freshUser();
+  let release!: () => void;
+  script = () => new Promise((r) => (release = () => r("done")));
+  await exec(taskTools(u, () => {}).start_task, { goal: "first", details: "" });
+  assert.match(await exec(taskTools(u, () => {}).start_task, { goal: "second", details: "" }), /not started: task #\d+ \(first\)/);
+  release();
+  await until(() => !openTask(u.id));
+});
+await test("an answer to a one-time-code question is flagged so the turn keeps it out of history", async () => {
+  const u = freshUser();
+  script = async (tools) => (await call(tools, "ask_user", { kind: "otp", text: "Enter the code the airline just sent you" }), "done");
+  await exec(taskTools(u, () => {}).start_task, { goal: "check-in", details: "" });
+  await until(() => openTask(u.id)?.status === "waiting");
+  let secret = false;
+  await exec(taskTools(u, () => (secret = true)).task_reply, { answer: "482913" });
+  assert.equal(secret, true);
+  await until(() => !openTask(u.id));
+});
+await test("cancel_task stops a waiting task", async () => {
+  const u = freshUser();
+  script = async (tools) => (await call(tools, "ask_user", { kind: "choice", text: "Which passengers?", options: ["both", "just you"] }), "should not finish");
+  await exec(taskTools(u, () => {}).start_task, { goal: "check-in", details: "" });
+  await until(() => openTask(u.id)?.status === "waiting");
+  assert.match(await exec(taskTools(u, () => {}).cancel_task, {}), /cancelled/);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(openTask(u.id), undefined);
+  assert.doesNotMatch(sent.map((m) => m.text).join("\n"), /should not finish/);
+});
+await test("tasks refuse to type passwords, PINs and card numbers, but allow booking references", () => {
+  assert.equal(tasks.forbiddenInput("Password", "hunter2"), true);
+  assert.equal(tasks.forbiddenInput("UPI PIN", "1234"), true);
+  assert.equal(tasks.forbiddenInput("Name on card", "4111 1111 1111 1111"), true);
+  assert.equal(tasks.forbiddenInput("PNR / Booking Reference", "ABC123"), false);
+  assert.equal(tasks.forbiddenInput("Mobile number", "9876543210"), false);
+});
+await test("a restart marks open tasks interrupted and tells the user once", async () => {
+  const u = freshUser();
+  db.prepare("INSERT INTO tasks (user_id, status, goal, details) VALUES (?, 'waiting', 'check-in for 6E 5', 'PNR XYZ')").run(u.id);
+  sent.length = 0;
+  tasks.startTaskRunner({ send, sendFile: async () => {} }, () => true, (_t, tools) => script(tools as any));
+  await until(() => sent.some((m) => /lost my place/.test(m.text)));
+  const row = db.prepare("SELECT status, details FROM tasks WHERE user_id = ?").get(u.id) as { status: string; details: string | null };
+  assert.deepEqual(row, { status: "interrupted", details: null });
+});
+
 console.log("keeping less");
 const rows = (table: string, userId: string) =>
   (db.prepare(`SELECT count(*) n FROM ${table} WHERE user_id = ?`).get(userId) as { n: number }).n;
@@ -293,8 +395,9 @@ await test("/delete asks first; /delete everything removes every row the user ow
   await exec(setReminder(u), { at_iso: istIso(1, 9), text: "call mom" });
   assert.match((await handleCommand(u, "/delete")) as string, /\/delete everything/);
   assert.equal(rows("memories", u.id), 1, "a bare /delete must not delete anything");
+  db.prepare("INSERT INTO tasks (user_id, status, goal) VALUES (?, 'done', 'x')").run(u.id);
   await handleCommand(u, "/delete everything");
-  for (const t of ["messages", "memories", "todos", "schedules", "inference_log"]) assert.equal(rows(t, u.id), 0, t);
+  for (const t of ["messages", "memories", "todos", "schedules", "inference_log", "tasks"]) assert.equal(rows(t, u.id), 0, t);
   assert.equal(db.prepare("SELECT count(*) n FROM users WHERE id = ?").get(u.id)!.n, 0);
 });
 await test("logged errors drop the prompt and response the AI SDK attaches", async () => {

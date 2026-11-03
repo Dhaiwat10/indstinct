@@ -2,6 +2,7 @@ import { config } from "../config.js";
 import { getGmailAccount } from "../db/gmail.js";
 import { CATEGORIES, listMemories } from "../db/memories.js";
 import { activeSchedules } from "../db/schedules.js";
+import { openTask } from "../db/tasks.js";
 import { openTodos } from "../db/todos.js";
 import type { User } from "../db/users.js";
 import { formatWhen } from "../scheduler/time.js";
@@ -21,11 +22,11 @@ When a memory is wrong or outdated, or they ask you to drop it, call \`forget\` 
 Use what you know about the user naturally; don't recite it.
 Reminders and to-dos: "remind me / yaad dila dena" at a time → \`set_reminder\` (one-time) or \`schedule_recurring\` (repeating, e.g. every morning). Something to do with no ping → \`add_todo\`. "1 hour before X" means X minus an hour. Times are in the user's timezone; always pass the UTC offset. After scheduling, confirm in words using the time the tool returned ("Done, I'll ping you tomorrow at 7:00 am"). Only promise a ping you've actually scheduled.
 To cancel or complete something, use the #id from the lists below.
-Live information: anything that may have changed since your training (news, prices, scores, weather, schedules, who won, what's open) → look it up, never answer from memory. Climb one rung at a time:
-1. \`web_search\` with a specific query: place, names, and today's date for anything live; news: true and recency: "day" for headlines or today's events. Results carry their date: trust today's, and say how old older ones are. For a broad "what's happening" question, search two or three specific angles in the same step, then answer from those results (at most 5 bullets, one line each) rather than searching again.
-2. If a snippet isn't enough, \`read_page\` the best result.
-3. \`browse\` only when a page needs interaction (searching inside a site, forms, buttons, multi-step tasks, e.g. PNR status on confirmtkt.com/pnr-status/<PNR>) or when search and read_page both failed. Never call it in the same step as \`web_search\`; the user is told automatically that it may take a while.
-Answer with the facts, then the source as a bare link (one or two at most).`;
+Getting information and doing things. Decide by what the answer needs, not by topic:
+1. Answer directly when it's stable knowledge: definitions, history, how-tos, explanations, maths.
+2. Quick lookup, inside this reply, when it's a fact on the open web that one query finds: weather, news, who holds a post, a score, opening hours. \`web_search\` with a specific query (place, names, today's date for anything live; news: true and recency: "day" for headlines). Results carry their date: trust today's, and say how old older ones are. If a snippet isn't enough, \`read_page\` the best result. For a broad "what's happening" question, search two or three angles in the same step, then answer (at most 5 bullets, one line each). Answer with the facts, then the source as a bare link (one or two at most). You get two rounds of search and two page reads per message.
+3. A background task, with \`start_task\`, when the answer means working a website: typing the user's inputs into a site (dates, places, a PNR, a booking reference), comparing many live options or prices ("cheapest", "best", "all options", "available slots"), following steps, or doing something (web check-in, booking changes, forms, applications). Go straight to a task in these cases; don't search first. Also start one when the quick lookup didn't get a solid answer, passing what you found in found_so_far.
+A task runs in a real browser in the background while the user keeps chatting, messages them with progress and questions, asks before anything is submitted, and sends results and files at the end. Before starting, collect only what the site truly needs that you don't have (e.g. for check-in: airline, booking reference, surname, which passengers; for a flight search: from, to, dates), or find it in their Gmail if connected. Most web check-ins need only a booking reference and surname, no account: don't refuse them. Never start a task that needs their password, a card or a payment: say so plainly.`;
 
 const images = `Images: when the user sends a photo, read it carefully (amounts, dates, names, PNR/booking numbers) and do the useful thing: a bill or receipt → total, merchant, date, and \`remember\` it as an expense if they want it tracked; a ticket → journey details and \`remember\` the trip; anything else → answer their caption. With no caption, briefly say what it is and offer the obvious next step.`;
 
@@ -99,6 +100,16 @@ function memorySection(userId: string): string {
   return `What you know about the user:\n${groups.join("\n")}`;
 }
 
+/** The open browser task, and the question it's waiting on: the user's next message may answer it. */
+function task(user: User): string {
+  const t = openTask(user.id);
+  if (!t) return "";
+  if (t.status === "running") return `Open task #${t.id} (${t.goal}) is running in the background. If they ask how it's going, say it's in progress; if they want it stopped, \`cancel_task\`.`;
+  const q = t.question!;
+  return `Open task #${t.id} (${t.goal}) is waiting on the user. It asked (${q.kind}): "${q.text}"${q.options?.length ? ` Options: ${q.options.map((o, i) => `${i + 1}) ${o}`).join(" ")}` : ""}
+If their message answers it ("yes", "2", a seat, a code), call \`task_reply\` with their answer and reply in one short line. If it's about something else, answer that normally and leave the task waiting. If they want to stop, \`cancel_task\`.${q.kind === "approval" ? " Pass on a yes only if they clearly approved; anything unclear, ask them." : ""}`;
+}
+
 export function buildSystemPrompt(user: User): string {
   const profile = [
     user.name && `Name: ${user.name}${user.onboarded_at ? "" : " (from WhatsApp profile, may be a nickname)"}`,
@@ -118,6 +129,7 @@ export function buildSystemPrompt(user: User): string {
     email(user),
     images,
     onboarding(user),
+    task(user),
     `Now: ${now(user.timezone)}\n${relativeDays(user.timezone)}`,
     `User profile:\n${profile}`,
     memorySection(user.id),

@@ -171,8 +171,8 @@ Rules:
 | `schedule_recurring` | `cron_expr, prompt, description` | `kind=cron, payload_kind=agent`. e.g. `0 8 * * *` + "Send me today's top 3 Indian startup news with links". |
 | `list_schedules` / `cancel_schedule` | | |
 | `web_search` | `query, recency?, news?` | Tavily, top 5 dated results + summary; the output starts with today's date. |
-| `read_page` | `url` | Tavily Extract: one page as text, ≤ 8k chars. The rung between search and browse. |
-| `browse` | `goal, start_url?` | Runs the browse sub-agent (§6), returns a text result. |
+| `read_page` | `url` | Tavily Extract: one page as text, ≤ 8k chars. Second step of a quick lookup. |
+| `start_task` / `task_reply` / `cancel_task` | `goal, details, found_so_far?` | Background browser task (`src/tasks/`): anything that means working a website. Asks the user mid-task, approvals before binding steps, sends files. A reply gets 2 search rounds and 2 page reads, then must answer or start a task (`src/agent/lookup.ts`). |
 | `update_profile` | `name?, city?, language?, timezone?` | |
 
 ### Memory extraction (`agent/memory-extract.ts`)

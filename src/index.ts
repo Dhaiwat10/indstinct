@@ -1,6 +1,6 @@
 import type { WASocket } from "baileys";
 import "./db/index.js";
-import { runAgent, type ProgressEvent } from "./agent/run.js";
+import { runAgent } from "./agent/run.js";
 import { handleCommand } from "./commands.js";
 import { upsertUser } from "./db/users.js";
 import { config } from "./config.js";
@@ -9,6 +9,7 @@ import { startHttp } from "./http/server.js";
 import { log } from "./log.js";
 import { InferenceUnavailable } from "./nearai/capture.js";
 import { startScheduler } from "./scheduler/tick.js";
+import { startTaskRunner } from "./tasks/runner.js";
 import { onInbound, type Inbound } from "./wa/inbound.js";
 import { sendFile, sendText, typing } from "./wa/outbound.js";
 import { connect } from "./wa/socket.js";
@@ -24,13 +25,6 @@ function slowNotice(text: string): string {
   return devanagari.test(text) ? "एक सेकंड, देख रहा हूँ… ⏳" : "One sec, on it… ⏳";
 }
 
-/** Sent the moment a long job starts, in place of the generic slow notice. */
-function progressNotice(event: ProgressEvent, text: string): string {
-  switch (event) {
-    case "browsing":
-      return devanagari.test(text) ? "साइट खोल रहा हूँ, इसमें एक-दो मिनट लग सकते हैं ⏳" : "Opening the site now, this can take a minute or two ⏳";
-  }
-}
 
 function failureMessage(err: unknown): string {
   const cause = err instanceof InferenceUnavailable ? err : (err as { cause?: unknown })?.cause;
@@ -58,10 +52,10 @@ async function respond(sock: WASocket, burst: Inbound[]): Promise<void> {
   const images = burst.flatMap((m) => (m.image ? [m.image] : []));
   log.info({ user: user.id, chars: text.length, images: images.length, messages: burst.length }, "inbound");
   await typing(sock, last.chatJid, true);
-  // WhatsApp drops "typing…" after ~25s; browsing can take minutes.
+  // WhatsApp drops "typing…" after ~25s.
   const keepTyping = setInterval(() => void typing(sock, last.chatJid, true), 10_000);
   let slow: NodeJS.Timeout | undefined;
-  // One interim message per turn at most: whichever of "slow" and "browsing" comes first.
+  // One interim message per turn at most.
   let noticed = false;
   const notice = (message: string) => {
     if (noticed) return;
@@ -73,7 +67,7 @@ async function respond(sock: WASocket, burst: Inbound[]): Promise<void> {
     if (!command) slow = setTimeout(() => notice(slowNotice(text)), SLOW_NOTICE_MS);
     const result =
       command === undefined
-        ? await runAgent(user, { text, images, waMessageId: last.waMessageId, progress: (event) => notice(progressNotice(event, text)) })
+        ? await runAgent(user, { text, images, waMessageId: last.waMessageId })
         : undefined;
     const reply = command ?? result!.reply;
     clearTimeout(slow);
@@ -107,6 +101,16 @@ const send = async (jid: string, text: string) => {
 };
 const connected = () => !!current;
 startScheduler(send, connected);
+startTaskRunner(
+  {
+    send,
+    sendFile: async (jid, f) => {
+      if (!current) throw new Error("WhatsApp not connected");
+      await sendFile(current, jid, f.data, f.mimeType, f.name);
+    },
+  },
+  connected,
+);
 // Always up, for /health; the Gmail routes just report "link expired" until Gmail is configured.
 startHttp(send);
 if (config.GMAIL_ENABLED) startInboxWatch(send, connected);

@@ -15,6 +15,7 @@
     "bench:tools": "tsx scripts/bench-tools.ts",
     "bench:search": "tsx scripts/bench-search.ts",
     "eval:chat": "tsx scripts/eval-chat.ts",
+    "eval:routing": "tsx scripts/eval-routing.ts",
     "test:gmail": "tsx scripts/test-gmail.ts",
     "test:core": "tsx scripts/test-core.ts",
     "test": "tsx scripts/test-core.ts && tsx scripts/test-gmail.ts"

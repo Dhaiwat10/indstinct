@@ -46,6 +46,13 @@ export function saveMessage(
   return Number(insert.run(userId, role, content, waMessageId ?? null, toolJson).lastInsertRowid);
 }
 
+const rewrite = db.prepare("UPDATE messages SET content = ? WHERE id = ?");
+
+/** Replaces what a stored message says, e.g. a one-time code the user sent for a task. */
+export function rewriteMessage(id: number, content: string): void {
+  rewrite.run(content, id);
+}
+
 export function history(userId: string, limit = HISTORY_LIMIT): StoredMessage[] {
   return recent.all(userId, limit).map(({ tool_calls, ...m }) => ({
     ...m,

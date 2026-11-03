@@ -10,8 +10,8 @@ const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
 const insert = db.prepare(`
   INSERT INTO inference_log
-    (user_id, message_id, purpose, completion_id, model, request_sha256, response_sha256, request_raw, response_raw)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (user_id, message_id, purpose, completion_id, model, request_sha256, response_sha256)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 
 function toBytes(body: unknown): Uint8Array<ArrayBuffer> | undefined {
@@ -61,10 +61,10 @@ async function fetchWithRetry(input: Parameters<typeof fetch>[0], init: RequestI
 }
 
 /**
- * A fetch that records the exact request and response bytes of every chat completion.
- * NEAR AI signs `model:sha256(request):sha256(response)`, so we must hash the bytes on
- * the wire, never re-serialized JSON. Responses are fully buffered, so this only works
- * for non-streaming calls.
+ * A fetch that records the hashes of the exact request and response bytes of every chat
+ * completion, and nothing else of them. NEAR AI signs `model:sha256(request):sha256(response)`,
+ * so we must hash the bytes on the wire, never re-serialized JSON. Responses are fully buffered,
+ * so this only works for non-streaming calls.
  */
 export const capturingFetch: typeof fetch = async (input, init) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -92,8 +92,6 @@ export const capturingFetch: typeof fetch = async (input, init) => {
         reqJson.model ?? null,
         sha256(requestBytes),
         sha256(responseBytes),
-        Buffer.from(requestBytes),
-        Buffer.from(responseBytes),
       );
     } catch (err) {
       log.error({ err }, "failed to record inference");

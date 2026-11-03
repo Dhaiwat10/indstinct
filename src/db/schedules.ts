@@ -21,10 +21,13 @@ const upcoming = db.prepare<[string], Schedule>(
 const due = db.prepare<[string], Schedule>(
   "SELECT * FROM schedules WHERE active = 1 AND next_run_at <= ? ORDER BY next_run_at LIMIT 20",
 );
-const deactivate = db.prepare("UPDATE schedules SET active = 0 WHERE id = ? AND user_id = ? AND active = 1");
+// Cancelled and finished schedules are deleted; nothing reads inactive ones. (Old rows are cleared here.)
+const deactivate = db.prepare("DELETE FROM schedules WHERE id = ? AND user_id = ? AND active = 1");
 const ran = db.prepare(
-  "UPDATE schedules SET last_run_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), next_run_at = ?, active = ? WHERE id = ?",
+  "UPDATE schedules SET last_run_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), next_run_at = ? WHERE id = ?",
 );
+const finished = db.prepare("DELETE FROM schedules WHERE id = ?");
+db.exec("DELETE FROM schedules WHERE active = 0");
 
 export function addSchedule(s: Omit<Schedule, "id">): number {
   return Number(insert.run(s).lastInsertRowid);
@@ -44,5 +47,6 @@ export function cancelSchedule(userId: string, id: number): boolean {
 
 /** Records a run: reminders end, cron jobs move to their next occurrence. */
 export function markRan(s: Schedule, next: Date | undefined): void {
-  ran.run(next?.toISOString() ?? s.next_run_at, next ? 1 : 0, s.id);
+  if (next) ran.run(next.toISOString(), s.id);
+  else finished.run(s.id);
 }

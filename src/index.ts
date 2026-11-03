@@ -56,7 +56,7 @@ async function respond(sock: WASocket, burst: Inbound[]): Promise<void> {
   const user = upsertUser(last.chatJid, last.phone, last.pushName);
   const text = burst.map((m) => m.text).filter(Boolean).join("\n");
   const images = burst.flatMap((m) => (m.image ? [m.image] : []));
-  log.info({ user: user.id, text, images: images.length, messages: burst.length }, "inbound");
+  log.info({ user: user.id, chars: text.length, images: images.length, messages: burst.length }, "inbound");
   await typing(sock, last.chatJid, true);
   // WhatsApp drops "typing…" after ~25s; browsing can take minutes.
   const keepTyping = setInterval(() => void typing(sock, last.chatJid, true), 10_000);

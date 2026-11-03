@@ -1,3 +1,4 @@
+import { deleteEverything } from "./account.js";
 import { config } from "./config.js";
 import { db } from "./db/index.js";
 import { getGmailAccount, setGmailAlerts } from "./db/gmail.js";
@@ -123,7 +124,8 @@ const help = `*Commands*
 /done <id>: tick off a to-do
 /memories: what I remember about you
 /forget <id>: forget a memory (ids from /memories)
-/reset: clear our chat history (memories stay)
+/reset: delete our chat history (memories stay)
+/delete: delete everything I have about you
 /help: this list`;
 
 /** Handles a slash command without the LLM. Returns undefined if `text` isn't one. */
@@ -162,7 +164,12 @@ export async function handleCommand(user: User, text: string): Promise<string | 
     }
     case "reset":
       clearHistory(user.id);
-      return "Chat history cleared. I still remember what you've told me. Send /memories to see it.";
+      return "Chat history deleted. I still remember what you've told me. Send /memories to see it.";
+    case "delete":
+      if (arg!.trim().toLowerCase() !== "everything")
+        return "This deletes everything I have about you: our chat, your memories, to-dos and reminders, and your Gmail link (revoked at Google too). It can't be undone.\n\nTo go ahead, send: /delete everything";
+      await deleteEverything(user.id);
+      return "🗑️ Done. Everything I had about you is deleted. If you message me again, we start fresh.";
     case "help":
       return help;
     default:

@@ -7,9 +7,9 @@ const open = db.prepare<[string], Todo>(`
   SELECT id, title, due_at, done_at FROM todos WHERE user_id = ? AND done_at IS NULL
   ORDER BY due_at IS NULL, due_at, id
 `);
-const markDone = db.prepare(
-  "UPDATE todos SET done_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ? AND done_at IS NULL",
-);
+// A done to-do is deleted; nothing lists finished ones. (done_at only exists on old rows.)
+const markDone = db.prepare("DELETE FROM todos WHERE id = ? AND user_id = ? AND done_at IS NULL");
+db.exec("DELETE FROM todos WHERE done_at IS NOT NULL");
 
 export function addTodo(userId: string, title: string, dueAt?: string): number {
   return Number(insert.run(userId, title, dueAt ?? null).lastInsertRowid);

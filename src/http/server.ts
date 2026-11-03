@@ -63,7 +63,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, send: Send): Pr
 export function startHttp(send: Send): void {
   createServer((req, res) => {
     handle(req, res, send).catch((err) => {
-      log.error({ err, url: req.url }, "http handler failed");
+      log.error({ err, path: req.url?.split("?")[0] }, "http handler failed");
       if (!res.headersSent) res.writeHead(500).end("error");
     });
   }).listen(config.PORT, () => log.info({ port: config.PORT, publicUrl: config.PUBLIC_URL }, "http listening"));

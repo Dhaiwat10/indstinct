@@ -56,7 +56,7 @@ async function poll(account: GmailAccount, send: Send): Promise<void> {
   for (const meta of fresh) {
     const full = await gmail.getFull(meta.id);
     const t = await triage(user, full);
-    log.info({ user: user.id, from: meta.from, subject: meta.subject, important: t.important }, "inbox triage");
+    log.info({ user: user.id, important: t.important }, "inbox triage");
     if (!t.important) continue;
     if (account.flags_day === today(user.timezone) && account.flags_today >= MAX_FLAGS_PER_DAY) return;
     if (!proactiveGate(user.id)) return; // the cursor moved on; this one just isn't flagged

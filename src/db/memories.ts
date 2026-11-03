@@ -39,9 +39,9 @@ export function remember(
   return { id: Number(insert.run(userId, content, category, source).lastInsertRowid), updated: false };
 }
 
-const archive = db.prepare(
-  "UPDATE memories SET archived_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ? AND archived_at IS NULL",
-);
+// Forgetting deletes; nothing reads archived memories. (archived_at only exists on old rows.)
+const archive = db.prepare("DELETE FROM memories WHERE id = ? AND user_id = ? AND archived_at IS NULL");
+db.exec("DELETE FROM memories WHERE archived_at IS NOT NULL");
 const replace = db.prepare(
   "UPDATE memories SET content = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND user_id = ? AND archived_at IS NULL",
 );

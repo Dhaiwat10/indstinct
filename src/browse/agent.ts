@@ -111,10 +111,10 @@ export async function browse(goal: string, startUrl?: string): Promise<string> {
       maxRetries: 0, // capturingFetch retries
     });
     const answer = result.text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-    log.info({ goal, ms: Date.now() - t0, steps: result.steps.length, url: page.url() }, "browse done");
+    log.info({ ms: Date.now() - t0, steps: result.steps.length, host: new URL(page.url()).hostname }, "browse done");
     return answer || `Stopped after ${result.steps.length} steps without an answer. Last page: ${page.url()}`;
   } catch (err) {
-    log.warn({ err, goal }, "browse failed");
+    log.warn({ err }, "browse failed");
     return `Browsing failed (${(err as Error).name === "TimeoutError" ? "took too long" : (err as Error).message.split("\n")[0]}). Last page: ${page.url()}`;
   } finally {
     await context.close().catch(() => {});

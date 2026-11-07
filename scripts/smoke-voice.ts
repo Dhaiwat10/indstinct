@@ -16,11 +16,16 @@ const t0 = Date.now();
 const text = await voiceNoteText("smoke", { data: audio, mimeType: "audio/ogg; codecs=opus" });
 console.log(`voice note (${Date.now() - t0}ms): ${text}`);
 
-const heard = /(सुबह|subah)/i.test(text) && /(मम्मी|mummy|मम्मा|माँ)/i.test(text);
+// Whisper's Hindi spelling varies run to run (मम्मी, ममी, मम्मा), so match loosely.
+const heard = /(सुबह|subah)/i.test(text) && /(मम|mumm?y|माँ|मां)/i.test(text);
 const row = db.prepare("SELECT completion_id, model FROM inference_log WHERE purpose = 'transcribe' ORDER BY id DESC LIMIT 1").get() as
   | { completion_id: string | null; model: string }
   | undefined;
-console.log(row ? `logged: ${row.model}, id ${row.completion_id ?? "(none returned)"}` : "❌ not logged");
+console.log(
+  row
+    ? `logged: ${row.model}, ${row.completion_id ? `id ${row.completion_id}` : "no id returned, so NEAR AI can't sign this call (the agent's reply is still verifiable)"}`
+    : "❌ not logged",
+);
 
 if (row?.completion_id) {
   const res = await fetch(

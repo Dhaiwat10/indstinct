@@ -30,6 +30,8 @@ A task runs in a real browser in the background while the user keeps chatting, m
 
 const images = `Images: when the user sends a photo, read it carefully (amounts, dates, names, PNR/booking numbers) and do the useful thing: a bill or receipt → total, merchant, date, and \`remember\` it as an expense if they want it tracked; a ticket → journey details and \`remember\` the trip; anything else → answer their caption. With no caption, briefly say what it is and offer the obvious next step.`;
 
+const voice = `Voice notes: a message starting "[🎤 voice note]" is the user speaking, transcribed by Whisper. Treat it exactly like a typed message and never comment on the transcription. Reply in the language they spoke, in the script they normally type in (their earlier typed messages or preferred language); if you can't tell, spoken Hindi or Hinglish gets a Hinglish reply in Latin script, since the transcript's Devanagari is Whisper's choice, not theirs. Transcripts can mishear names, numbers and times: if one you need to act on looks garbled, confirm it in a few words before setting a reminder or starting a task.`;
+
 function email(user: User): string {
   if (!config.GMAIL_ENABLED) return "";
   const account = getGmailAccount(user.id);
@@ -128,6 +130,7 @@ export function buildSystemPrompt(user: User): string {
     tools,
     email(user),
     images,
+    voice,
     onboarding(user),
     task(user),
     `Now: ${now(user.timezone)}\n${relativeDays(user.timezone)}`,

@@ -20,6 +20,8 @@ export type Inbound = {
   /** Message text, or an image's caption ("" if none). */
   text: string;
   image?: { data: Buffer; mediaType: string };
+  /** A voice note or audio file, transcribed later once we know whose it is. */
+  audio?: { data: Buffer; mimeType: string };
   waMessageId?: string;
   raw: WAMessage;
 };
@@ -40,7 +42,7 @@ function allowed(phone: string | undefined): boolean {
   return !!phone && config.ALLOWED_NUMBERS.includes(phone);
 }
 
-/** Calls `handler` for each new 1:1 text or image message from an allowlisted sender. */
+/** Calls `handler` for each new 1:1 text, image or voice message from an allowlisted sender. */
 export function onInbound(sock: WASocket, handler: (msg: Inbound) => Promise<void>): void {
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
@@ -51,8 +53,9 @@ export function onInbound(sock: WASocket, handler: (msg: Inbound) => Promise<voi
         continue;
 
       const imageMessage = raw.message?.imageMessage;
+      const audioMessage = raw.message?.audioMessage;
       const text = textOf(raw) ?? "";
-      if (!text && !imageMessage) continue;
+      if (!text && !imageMessage && !audioMessage) continue;
 
       const phone = phoneOf(raw);
       if (!allowed(phone)) {
@@ -64,7 +67,10 @@ export function onInbound(sock: WASocket, handler: (msg: Inbound) => Promise<voi
         const image = imageMessage
           ? { data: await downloadMediaMessage(raw, "buffer", {}), mediaType: imageMessage.mimetype ?? "image/jpeg" }
           : undefined;
-        await handler({ chatJid, phone, pushName: raw.pushName ?? undefined, text, image, waMessageId: raw.key.id ?? undefined, raw });
+        const audio = audioMessage
+          ? { data: await downloadMediaMessage(raw, "buffer", {}), mimeType: audioMessage.mimetype ?? "audio/ogg; codecs=opus" }
+          : undefined;
+        await handler({ chatJid, phone, pushName: raw.pushName ?? undefined, text, image, audio, waMessageId: raw.key.id ?? undefined, raw });
       } catch (err) {
         log.error({ err, chatJid }, "inbound handler failed");
       }

@@ -13,6 +13,8 @@ delete process.env.GOOGLE_CLIENT_ID;
 
 // A recurring task runs the agent; answer every model call with a fixed reply.
 const modelCalls: string[] = [];
+const transcriptionCalls: { bytes: Buffer; contentType: string }[] = [];
+let nextTranscript = "  kal subah 8 baje mummy ko call karna yaad dilana  ";
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -21,6 +23,11 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     modelCalls.push(typeof b === "string" ? b : Buffer.from(b as Uint8Array).toString("utf8"));
     const body = { id: `c${modelCalls.length}`, object: "chat.completion", created: 0, model: "stub", choices: [{ index: 0, message: { role: "assistant", content: "Here are today's headlines." }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
     return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url.endsWith("/audio/transcriptions")) {
+    const bytes = Buffer.from(init?.body as Uint8Array);
+    transcriptionCalls.push({ bytes, contentType: new Headers(init?.headers).get("content-type") ?? "" });
+    return new Response(JSON.stringify({ text: nextTranscript }), { status: 200, headers: { "content-type": "application/json" } });
   }
   return realFetch(input, init);
 }) as typeof fetch;
@@ -42,6 +49,7 @@ const { getTask, openTask } = await import("../src/db/tasks.js");
 const { taskTools } = await import("../src/agent/tools/tasks.js");
 const { nextStep } = await import("../src/agent/lookup.js");
 const { buildSystemPrompt } = await import("../src/agent/prompt.js");
+const { voiceNoteText, MAX_AUDIO_BYTES } = await import("../src/nearai/transcribe.js");
 
 let passed = 0;
 const test = async (name: string, fn: () => Promise<void> | void) => {
@@ -439,6 +447,32 @@ async function runDueAMinuteLater(): Promise<void> {
     Date.now = realNow;
   }
 }
+
+console.log("voice notes");
+await test("a voice note is sent to Whisper as multipart and comes back as tagged text", async () => {
+  const audio = Buffer.from("OggS fake opus bytes");
+  const text = await voiceNoteText({ data: audio, mimeType: "audio/ogg; codecs=opus" });
+  assert.equal(text, "[🎤 voice note] kal subah 8 baje mummy ko call karna yaad dilana");
+  const call = transcriptionCalls.at(-1)!;
+  assert.match(call.contentType, /^multipart\/form-data; boundary=/);
+  const body = call.bytes.toString("latin1");
+  assert.match(body, /name="model"\r\n\r\nopenai\/whisper-large-v3/);
+  assert.match(body, /filename="voice\.ogg"/);
+  assert.ok(body.includes("OggS fake opus bytes"));
+});
+
+await test("silence and oversized voice notes get a placeholder instead of an error", async () => {
+  nextTranscript = "   ";
+  assert.equal(await voiceNoteText({ data: Buffer.from("x"), mimeType: "audio/ogg" }), "[🎤 voice note, no speech heard]");
+  const calls = transcriptionCalls.length;
+  assert.equal(await voiceNoteText({ data: Buffer.alloc(MAX_AUDIO_BYTES + 1), mimeType: "audio/ogg" }), "[🎤 voice note too long to transcribe]");
+  assert.equal(transcriptionCalls.length, calls, "an oversized note never leaves the server");
+});
+
+await test("the prompt tells the model how to treat voice notes", () => {
+  const user = upsertUser("voice@s.whatsapp.net", "919800000001", "Voice");
+  assert.match(buildSystemPrompt(user), /\[🎤 voice note\]/);
+});
 
 console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);
 process.exit();

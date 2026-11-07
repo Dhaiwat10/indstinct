@@ -39,7 +39,7 @@ export class InferenceUnavailable extends Error {
  * POSTs with a per-attempt timeout, retrying timeouts, network errors, 429 and 5xx.
  * Safe to retry: a failed completion never ran any tools.
  */
-async function fetchWithRetry(input: Parameters<typeof fetch>[0], init: RequestInit): Promise<Response> {
+export async function fetchWithRetry(input: Parameters<typeof fetch>[0], init: RequestInit): Promise<Response> {
   for (let attempt = 1; ; attempt++) {
     const signal = init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(ATTEMPT_TIMEOUT_MS)]) : AbortSignal.timeout(ATTEMPT_TIMEOUT_MS);
     let failure: string;

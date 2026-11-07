@@ -8,6 +8,7 @@ import { startInboxWatch } from "./gmail/watch.js";
 import { startHttp } from "./http/server.js";
 import { log } from "./log.js";
 import { InferenceUnavailable } from "./nearai/capture.js";
+import { voiceNoteText } from "./nearai/transcribe.js";
 import { startScheduler } from "./scheduler/tick.js";
 import { startTaskRunner } from "./tasks/runner.js";
 import { onInbound, type Inbound } from "./wa/inbound.js";
@@ -48,9 +49,8 @@ function serial(key: string, job: () => Promise<void>): Promise<void> {
 async function respond(sock: WASocket, burst: Inbound[]): Promise<void> {
   const last = burst.at(-1)!;
   const user = upsertUser(last.chatJid, last.phone, last.pushName);
-  const text = burst.map((m) => m.text).filter(Boolean).join("\n");
   const images = burst.flatMap((m) => (m.image ? [m.image] : []));
-  log.info({ user: user.id, chars: text.length, images: images.length, messages: burst.length }, "inbound");
+  const voice = burst.filter((m) => m.audio).length;
   await typing(sock, last.chatJid, true);
   // WhatsApp drops "typing…" after ~25s.
   const keepTyping = setInterval(() => void typing(sock, last.chatJid, true), 10_000);
@@ -63,7 +63,11 @@ async function respond(sock: WASocket, burst: Inbound[]): Promise<void> {
     void sendText(sock, last.chatJid, message).catch(() => {});
   };
   try {
-    const command = images.length ? undefined : await handleCommand(user, text);
+    const parts: string[] = [];
+    for (const m of burst) parts.push(m.audio ? [await voiceNoteText(m.audio), m.text].filter(Boolean).join(" ") : m.text);
+    const text = parts.filter(Boolean).join("\n");
+    log.info({ user: user.id, chars: text.length, images: images.length, voice, messages: burst.length }, "inbound");
+    const command = images.length || voice ? undefined : await handleCommand(user, text);
     if (!command) slow = setTimeout(() => notice(slowNotice(text)), SLOW_NOTICE_MS);
     const result =
       command === undefined

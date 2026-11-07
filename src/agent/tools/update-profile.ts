@@ -14,11 +14,11 @@ const validZone = (tz: string) => {
 export const updateProfile = (user: User) =>
   tool({
     description:
-      "Save the user's name, city, preferred language or timezone when they tell you. Only pass fields they gave you.",
+      "Save the user's name, city, preferred language or timezone when they tell you, including instructions like \"only reply in English\". Only pass fields they gave you.",
     inputSchema: z.object({
       name: z.string().optional().describe("What they want to be called"),
       city: z.string().optional(),
-      language: z.string().optional().describe('Preferred language for replies, e.g. "Hinglish", "Hindi", "English", "Tamil"'),
+      language: z.string().optional().describe('Language to always reply in, e.g. "Hinglish", "Hindi", "English", "Tamil"; "auto" to go back to mirroring whatever they write'),
       timezone: z.string().optional().describe('IANA zone, only if they are outside India, e.g. "Asia/Dubai"'),
     }),
     execute: async (input) => {

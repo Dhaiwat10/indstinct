@@ -50,6 +50,7 @@ const { taskTools } = await import("../src/agent/tools/tasks.js");
 const { nextStep } = await import("../src/agent/lookup.js");
 const { buildSystemPrompt } = await import("../src/agent/prompt.js");
 const { voiceNoteText, MAX_AUDIO_BYTES } = await import("../src/nearai/transcribe.js");
+const { slowNotice, SLOW_NOTICE_MS } = await import("../src/notice.js");
 
 let passed = 0;
 const test = async (name: string, fn: () => Promise<void> | void) => {
@@ -472,6 +473,36 @@ await test("silence and oversized voice notes get a placeholder instead of an er
 await test("the prompt tells the model how to treat voice notes", () => {
   const user = upsertUser("voice@s.whatsapp.net", "919800000001", "Voice");
   assert.match(buildSystemPrompt(user), /\[🎤 voice note\]/);
+});
+
+console.log("language");
+await test("the wait notice follows the saved language, whatever the message is in", () => {
+  const hindiVoice = "[🎤 voice note] कल सुबह 8 बजे ममी को फोन करना याद दिलाना";
+  assert.match(slowNotice({ language: "English" }, hindiVoice, true), /^Still on it/);
+  assert.match(slowNotice({ language: "English" }, "मुझे बताओ", false), /^Still on it/);
+  assert.match(slowNotice({ language: "Hindi" }, "tell me", false), /^अभी भी/);
+  assert.match(slowNotice({ language: "Hinglish" }, "tell me", false), /^Abhi bhi/);
+  assert.match(slowNotice({ language: "Tamil" }, "tell me", false), /^Still on it/);
+});
+
+await test("with no saved language the notice mirrors: typed Devanagari → Hindi, a Hindi voice note → Hinglish", () => {
+  assert.match(slowNotice({ language: "auto" }, "hello", false), /^Still on it/);
+  assert.match(slowNotice({ language: "auto" }, "मुझे बताओ", false), /^अभी भी/);
+  assert.match(slowNotice({ language: "auto" }, "[🎤 voice note] मुझे बताओ", true), /^Abhi bhi/);
+});
+
+await test("the wait notice is only for turns that run minutes, not seconds", () => {
+  assert.ok(SLOW_NOTICE_MS >= 5 * 60_000);
+});
+
+await test("a saved language is binding in the prompt; without one the bot mirrors", async () => {
+  const u = upsertUser("lang@s.whatsapp.net", "919800000002", "Lang");
+  assert.match(buildSystemPrompt(u), /language AND script of the user's latest message/);
+  const { updateProfile } = await import("../src/db/users.js");
+  const english = updateProfile(u.id, { language: "English" });
+  const prompt = buildSystemPrompt(english);
+  assert.match(prompt, /always reply in English[^\n]*whatever language they write or speak in/);
+  assert.doesNotMatch(prompt, /mirror that message/);
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ", some FAILED" : ""}`);

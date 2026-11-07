@@ -64,7 +64,7 @@ async function respond(sock: WASocket, burst: Inbound[]): Promise<void> {
   };
   try {
     const parts: string[] = [];
-    for (const m of burst) parts.push(m.audio ? [await voiceNoteText(user.id, m.audio), m.text].filter(Boolean).join(" ") : m.text);
+    for (const m of burst) parts.push(m.audio ? [await voiceNoteText(m.audio), m.text].filter(Boolean).join(" ") : m.text);
     const text = parts.filter(Boolean).join("\n");
     log.info({ user: user.id, chars: text.length, images: images.length, voice, messages: burst.length }, "inbound");
     const command = images.length || voice ? undefined : await handleCommand(user, text);

@@ -4,7 +4,7 @@ import { db } from "../db/index.js";
 import { log } from "../log.js";
 
 /** Who an inference call is for; set with `inferenceContext.run(...)` around agent turns. */
-export const inferenceContext = new AsyncLocalStorage<{ userId?: string; messageId?: number; purpose?: "agent" | "extract" | "triage" | "task" | "transcribe" }>();
+export const inferenceContext = new AsyncLocalStorage<{ userId?: string; messageId?: number; purpose?: "agent" | "extract" | "triage" | "task" }>();
 
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
@@ -19,12 +19,6 @@ function toBytes(body: unknown): Uint8Array<ArrayBuffer> | undefined {
   if (body instanceof Uint8Array) return new Uint8Array(body);
   if (body instanceof ArrayBuffer) return new Uint8Array(body);
   return undefined;
-}
-
-/** Logs the hashes of one call's exact request and response bytes, for the current inferenceContext. */
-export function recordInference(model: string | null, completionId: string | null, request: Uint8Array, response: Uint8Array, purpose?: "transcribe"): void {
-  const ctx = inferenceContext.getStore();
-  insert.run(ctx?.userId ?? null, ctx?.messageId ?? null, purpose ?? ctx?.purpose ?? "agent", completionId, model, sha256(request), sha256(response));
 }
 
 const ATTEMPTS = 3;
@@ -89,7 +83,16 @@ export const capturingFetch: typeof fetch = async (input, init) => {
     try {
       const reqJson = JSON.parse(Buffer.from(requestBytes).toString("utf8"));
       const resJson = JSON.parse(Buffer.from(responseBytes).toString("utf8"));
-      recordInference(reqJson.model ?? null, resJson.id ?? null, requestBytes, responseBytes);
+      const ctx = inferenceContext.getStore();
+      insert.run(
+        ctx?.userId ?? null,
+        ctx?.messageId ?? null,
+        ctx?.purpose ?? "agent",
+        resJson.id ?? null,
+        reqJson.model ?? null,
+        sha256(requestBytes),
+        sha256(responseBytes),
+      );
     } catch (err) {
       log.error({ err }, "failed to record inference");
     }

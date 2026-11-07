@@ -27,7 +27,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.endsWith("/audio/transcriptions")) {
     const bytes = Buffer.from(init?.body as Uint8Array);
     transcriptionCalls.push({ bytes, contentType: new Headers(init?.headers).get("content-type") ?? "" });
-    return new Response(JSON.stringify({ id: "tr1", text: nextTranscript }), { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ text: nextTranscript }), { status: 200, headers: { "content-type": "application/json" } });
   }
   return realFetch(input, init);
 }) as typeof fetch;
@@ -450,9 +450,8 @@ async function runDueAMinuteLater(): Promise<void> {
 
 console.log("voice notes");
 await test("a voice note is sent to Whisper as multipart and comes back as tagged text", async () => {
-  const user = upsertUser("voice@s.whatsapp.net", "919800000001", "Voice");
   const audio = Buffer.from("OggS fake opus bytes");
-  const text = await voiceNoteText(user.id, { data: audio, mimeType: "audio/ogg; codecs=opus" });
+  const text = await voiceNoteText({ data: audio, mimeType: "audio/ogg; codecs=opus" });
   assert.equal(text, "[🎤 voice note] kal subah 8 baje mummy ko call karna yaad dilana");
   const call = transcriptionCalls.at(-1)!;
   assert.match(call.contentType, /^multipart\/form-data; boundary=/);
@@ -462,22 +461,11 @@ await test("a voice note is sent to Whisper as multipart and comes back as tagge
   assert.ok(body.includes("OggS fake opus bytes"));
 });
 
-await test("the transcription is logged as hashes of the exact bytes sent and received, never the audio", async () => {
-  const user = upsertUser("voice@s.whatsapp.net", "919800000001", "Voice");
-  const row = db.prepare("SELECT * FROM inference_log WHERE user_id = ? AND purpose = 'transcribe' ORDER BY id DESC LIMIT 1").get(user.id) as Record<string, unknown>;
-  const { createHash } = await import("node:crypto");
-  assert.equal(row.completion_id, "tr1");
-  assert.equal(row.model, "openai/whisper-large-v3");
-  assert.equal(row.request_sha256, createHash("sha256").update(transcriptionCalls.at(-1)!.bytes).digest("hex"));
-  assert.ok(!JSON.stringify(row).includes("mummy"));
-});
-
 await test("silence and oversized voice notes get a placeholder instead of an error", async () => {
-  const user = upsertUser("voice@s.whatsapp.net", "919800000001", "Voice");
   nextTranscript = "   ";
-  assert.equal(await voiceNoteText(user.id, { data: Buffer.from("x"), mimeType: "audio/ogg" }), "[🎤 voice note, no speech heard]");
+  assert.equal(await voiceNoteText({ data: Buffer.from("x"), mimeType: "audio/ogg" }), "[🎤 voice note, no speech heard]");
   const calls = transcriptionCalls.length;
-  assert.equal(await voiceNoteText(user.id, { data: Buffer.alloc(MAX_AUDIO_BYTES + 1), mimeType: "audio/ogg" }), "[🎤 voice note too long to transcribe]");
+  assert.equal(await voiceNoteText({ data: Buffer.alloc(MAX_AUDIO_BYTES + 1), mimeType: "audio/ogg" }), "[🎤 voice note too long to transcribe]");
   assert.equal(transcriptionCalls.length, calls, "an oversized note never leaves the server");
 });
 

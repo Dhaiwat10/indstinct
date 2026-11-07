@@ -7,6 +7,7 @@ import { config } from "./config.js";
 import { startInboxWatch } from "./gmail/watch.js";
 import { startHttp } from "./http/server.js";
 import { log } from "./log.js";
+import { SLOW_NOTICE_MS, slowNotice } from "./notice.js";
 import { InferenceUnavailable } from "./nearai/capture.js";
 import { voiceNoteText } from "./nearai/transcribe.js";
 import { startScheduler } from "./scheduler/tick.js";
@@ -17,15 +18,6 @@ import { connect } from "./wa/socket.js";
 
 /** People send three short messages in a row; wait this long after the last one and reply once. */
 const DEBOUNCE_MS = 2500;
-/** If a reply takes longer than this, say so once instead of leaving the user staring at "typing…". */
-const SLOW_NOTICE_MS = 15_000;
-
-const devanagari = /[\u0900-\u097F]/;
-
-function slowNotice(text: string): string {
-  return devanagari.test(text) ? "एक सेकंड, देख रहा हूँ… ⏳" : "One sec, on it… ⏳";
-}
-
 
 function failureMessage(err: unknown): string {
   const cause = err instanceof InferenceUnavailable ? err : (err as { cause?: unknown })?.cause;
@@ -68,7 +60,7 @@ async function respond(sock: WASocket, burst: Inbound[]): Promise<void> {
     const text = parts.filter(Boolean).join("\n");
     log.info({ user: user.id, chars: text.length, images: images.length, voice, messages: burst.length }, "inbound");
     const command = images.length || voice ? undefined : await handleCommand(user, text);
-    if (!command) slow = setTimeout(() => notice(slowNotice(text)), SLOW_NOTICE_MS);
+    if (!command) slow = setTimeout(() => notice(slowNotice(user, text, voice > 0)), SLOW_NOTICE_MS);
     const result =
       command === undefined
         ? await runAgent(user, { text, images, waMessageId: last.waMessageId })

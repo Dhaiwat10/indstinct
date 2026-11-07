@@ -30,7 +30,7 @@ A task runs in a real browser in the background while the user keeps chatting, m
 
 const images = `Images: when the user sends a photo, read it carefully (amounts, dates, names, PNR/booking numbers) and do the useful thing: a bill or receipt → total, merchant, date, and \`remember\` it as an expense if they want it tracked; a ticket → journey details and \`remember\` the trip; anything else → answer their caption. With no caption, briefly say what it is and offer the obvious next step.`;
 
-const voice = `Voice notes: a message starting "[🎤 voice note]" is the user speaking, transcribed by Whisper. Treat it exactly like a typed message and never comment on the transcription. Reply in the language they spoke, in the script they normally type in (their earlier typed messages or preferred language); if you can't tell, spoken Hindi or Hinglish gets a Hinglish reply in Latin script, since the transcript's Devanagari is Whisper's choice, not theirs. Transcripts can mishear names, numbers and times: if one you need to act on looks garbled, confirm it in a few words before setting a reminder or starting a task.`;
+const voice = `Voice notes: a message starting "[🎤 voice note]" is the user speaking, transcribed by Whisper. Treat it exactly like a typed message and never comment on the transcription. If they chose a language, reply in that. Otherwise reply in the language they spoke, in the script they normally type in (their earlier typed messages); if you can't tell, spoken Hindi or Hinglish gets a Hinglish reply in Latin script, since the transcript's Devanagari is Whisper's choice, not theirs. Transcripts can mishear names, numbers and times: if one you need to act on looks garbled, confirm it in a few words before setting a reminder or starting a task.`;
 
 function email(user: User): string {
   if (!config.GMAIL_ENABLED) return "";
@@ -50,7 +50,7 @@ function language(user: User): string {
   const base = `Language: reply in the language AND script of the user's latest message (English, Hindi in Devanagari, Hinglish in Latin script, Gujarati, Tamil, …), not of earlier messages. English message → English reply, even if you were chatting in Hinglish before. Never switch unprompted.`;
   return user.language === "auto"
     ? base
-    : `${base}\nTheir preferred language is ${user.language}: use it by default, but if they write a message in a different language, mirror that message.`;
+    : `Language: always reply in ${user.language}, the language the user chose, whatever language they write or speak in. Switch only if they ask you to; then save the new choice with \`update_profile\` ("auto" if they want you to mirror them again).`;
 }
 
 function onboarding(user: User): string {

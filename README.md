@@ -4,7 +4,7 @@ A personal assistant on WhatsApp, built for India, where every AI call runs insi
 
 Built at NEAR HACKATHON (November 2026). Tracks: Privacy & Private AI, Open Innovation.
 
-**Live bot:** WhatsApp `+91 __________` · site `https://__________`
+**Live bot:** message [+91 81050 81110](https://wa.me/918105081110) on WhatsApp.
 
 ## The problem
 

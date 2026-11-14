@@ -49,7 +49,7 @@ async function verify(user: User, arg: string): Promise<string | string[]> {
     `${tick(v.signerAttested)} Key belongs to the attested TEE for this model`,
     `${tick(v.quoteBindsSigner)} Hardware quote commits to that key (fresh nonce)`,
     v.error ? `\n_${v.error}_` : "",
-    allGood ? "\nThis reply was generated inside a TEE. Nobody, not NEAR and not us, could read it in plaintext." : "",
+    allGood ? "\nThis reply was generated inside a TEE. NEAR AI, which runs the model, could not read it in plaintext." : "",
     v.receiptUrl ? "\nFull values and independent hardware verification on NEAR AI's Verification Center 👇" : "",
   ]
     .filter((l) => l !== "")
